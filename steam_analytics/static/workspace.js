@@ -79,14 +79,43 @@
       const matches =
         !query || card.dataset.gameName.toLocaleLowerCase().includes(query);
       card.hidden = !matches;
+      card.classList.toggle("is-filtered-out", !matches);
       if (matches) visible += 1;
     });
     if (countLabel) countLabel.textContent = `${visible} encontrados`;
   }
+  function syncNameQuery() {
+    if (!nameInput) return;
+    const url = new URL(window.location.href);
+    const query = nameInput.value.trim();
+    if (query) url.searchParams.set("q", query);
+    else url.searchParams.delete("q");
+    window.history.replaceState(
+      {},
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }
   nameInput?.addEventListener("input", () => {
     clearTimeout(nameFilterTimer);
-    nameFilterTimer = setTimeout(filterCardsByName, 500);
+    nameFilterTimer = setTimeout(() => {
+      filterCardsByName();
+      syncNameQuery();
+    }, 500);
   });
+  nameInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+  document
+    .querySelector(".card-filters")
+    ?.addEventListener("submit", (event) => {
+      if (event.target === nameInput?.form) {
+        event.preventDefault();
+        clearTimeout(nameFilterTimer);
+        filterCardsByName();
+        syncNameQuery();
+      }
+    });
   filterCardsByName();
   document
     .querySelector(".card-filters")

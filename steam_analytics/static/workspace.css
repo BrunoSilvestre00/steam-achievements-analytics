@@ -23,6 +23,7 @@
 /* Cada linha mantém a altura do conteúdo, mesmo em bibliotecas grandes. */
 .game-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:max-content;gap:14px;min-height:0;overflow-y:auto;align-content:start;align-items:start;padding:3px 7px 3px 3px;margin-left:-3px;scrollbar-width:thin;scrollbar-color:var(--blue-mid) transparent;flex:1}
 .game-card{min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:9px;overflow:hidden;display:block;transition:border-color .15s,background .15s}
+.game-card.is-filtered-out{display:none}
 .game-card:hover{border-color:var(--blue-bright);color:var(--text);background:#123b53}
 .game-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .game-card.is-complete{border-color:#c99736;background:linear-gradient(145deg,#302817,#162b3c 72%);box-shadow:inset 0 0 0 1px #c9973633}

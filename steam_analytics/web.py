@@ -144,7 +144,9 @@ def create_app(*, service=None):
             item["progress"] = progress[item["appid"]]
             item["hltb"] = hltb_summary.get(item["appid"])
             item["name_order"] = rank
-        games = [g for g in all_games if q.casefold() in g["name"].casefold()]
+        # A busca por nome acontece no navegador para evitar recarregar a página
+        # e manter toda a biblioteca disponível para o filtro instantâneo.
+        games = list(all_games)
         if played == "played":
             games = [g for g in games if (g["playtime_forever"] or 0) > 0]
         elif played == "unplayed":
@@ -192,7 +194,7 @@ def create_app(*, service=None):
             if platinum.get("rtime_last_played"):
                 year = datetime.fromtimestamp(platinum["rtime_last_played"]).year
                 platinum_years[year] = platinum_years.get(year, 0) + 1
-        selected = next((g for g in games if g["appid"] == game), games[0] if games else None)
+        selected = next((g for g in all_games if g["appid"] == game), games[0] if games else None)
         achievements = app.state.library.achievements(steamid, selected["appid"]) if selected else None
         hltb = app.state.library.hltb(selected["appid"], selected["name"]) if selected else None
         trophy_guide = load_trophy_guide(app.state.library.database, selected["appid"]) if selected else None

@@ -189,7 +189,7 @@
         >
       </div>
       <div class="achievement-list">
-        {% for achievement in achievements['items'] %}
+        {% for achievement in achievements['items'] | sort(attribute='unlocked', reverse=true) %}
         <div class="achievement-row">
           {% if achievement.icon or achievement.icon_gray %}<img
             class="achievement-icon"
