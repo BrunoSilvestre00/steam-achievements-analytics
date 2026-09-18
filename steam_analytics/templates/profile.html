@@ -1,4 +1,4 @@
-{% extends "base.html" %} {% block title %}Biblioteca {{ library.steamid }} ·
+{% extends "base.html" %} {% block title %}{{ library.personaname or library.steamid }} ·
 Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
 {% block content %}
 <div class="workspace-toolbar">
@@ -11,7 +11,7 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       href="https://steamcommunity.com/profiles/{{ library.steamid }}/"
       target="_blank"
       rel="noopener noreferrer"
-      >Perfil {{ library.steamid }} ↗</a
+      >{{ library.personaname or 'Perfil Steam' }} ↗</a
     >
     <form action="/profile/{{ library.steamid }}/refresh" method="post">
       <button class="secondary" type="submit">↻ Atualizar</button>

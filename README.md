@@ -1,4 +1,14 @@
-# Steam Achievement Analytics
+<div align="center">
+  <img src="steam_analytics/static/logo.png" alt="Steam Achievement Analytics" width="180">
+  <h1>Steam Achievement Analytics</h1>
+  <p>Analise sua biblioteca Steam e planeje o caminho até completar 100% dos jogos.</p>
+</div>
+
+<div align="center">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10 ou superior">
+  <img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/SQLite-local-003B57?logo=sqlite&logoColor=white" alt="SQLite">
+</div>
 
 Aplicação web em **Python + FastAPI + Jinja2 + SQLite** para analisar uma biblioteca
 Steam e planejar o caminho até completar 100% dos jogos. A página inicial mostra
@@ -10,10 +20,19 @@ para trocar o painel de detalhes sem recarregar a página. Não precisa de Node 
 
 ## Requisitos
 
+### Execução local
+
 - Python 3.10 ou superior
 - Uma chave da Steam Web API
 - Node.js/npm apenas para validar os arquivos JavaScript com Prettier
-- Docker e Docker Compose (opcionais)
+
+### Execução com Docker
+
+- Docker Desktop com Docker Compose
+- Uma chave da Steam Web API
+
+Ao usar Docker Compose, não é necessário instalar Python, criar `.venv` ou
+instalar as dependências manualmente: tudo é instalado dentro da imagem da aplicação.
 
 ## Rodar localmente (PowerShell)
 
@@ -28,6 +47,8 @@ Copy-Item .env.example .env
 No `.env`, preencha `STEAM_API_KEY` com a chave obtida em
 [Steam Web API Key](https://steamcommunity.com/dev/apikey). A chave é lida no
 servidor e não é enviada ao navegador. O `.env` está ignorado pelo Git.
+Por padrão, as chamadas usam conexão direta; se sua rede exigir um proxy, informe
+`STEAM_PROXY=http://host:porta`.
 Opcionalmente, configure `STEAM_PROFILE` com o link do seu perfil para deixar o
 campo inicial preenchido. Links como `https://steamcommunity.com/id/cidosilvestre/`
 são convertidos automaticamente para SteamID64 pela API.
@@ -50,7 +71,7 @@ Reinicie o servidor depois de alterar a chave no `.env`.
 
 ## Rodar com Docker Compose
 
-Com Docker instalado, mantenha a `STEAM_API_KEY` no `.env` e execute:
+Com Docker Desktop instalado, mantenha a `STEAM_API_KEY` no `.env` e execute:
 
 ```powershell
 docker compose up --build
@@ -120,7 +141,7 @@ automaticamente ao iniciar a aplicação. São onze tabelas:
 | Tabela | Dados |
 | --- | --- |
 | `games` | Catálogo de jogos, uma linha por appid |
-| `libraries` | Perfis e data da última importação |
+| `libraries` | Perfis, nome público e data da última importação |
 | `library_games` | Jogos de cada perfil e seus tempos de jogo |
 | `achievement_definitions` | Nome e descrição de cada conquista de um jogo |
 | `player_achievements` | Conquistas desbloqueadas ou pendentes por perfil |

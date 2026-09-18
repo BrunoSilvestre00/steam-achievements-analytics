@@ -1,11 +1,12 @@
 """Cliente da Steam Web API, sem dependências externas."""
 
 import json
+import os
 import re
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 
 class SteamError(Exception):
@@ -21,11 +22,15 @@ def valid_steamid(value):
 
 
 class SteamClient:
-    def __init__(self, api_key, *, opener=urlopen, sleep=time.sleep):
+    def __init__(self, api_key, *, opener=None, sleep=time.sleep):
         if not api_key or not api_key.strip():
             raise SteamError("Configure STEAM_API_KEY no arquivo .env do servidor para consultar a biblioteca.", 503)
         self._api_key = api_key.strip()
-        self._open = opener
+        if opener is None:
+            proxy = os.environ.get("STEAM_PROXY", "").strip()
+            self._open = build_opener(ProxyHandler({"http": proxy, "https": proxy} if proxy else {})).open
+        else:
+            self._open = opener
         self._sleep = sleep
 
     def _get(self, endpoint, params, *, root="response"):
@@ -119,6 +124,17 @@ class SteamClient:
             raise SteamError("A Steam retornou jogos duplicados; importação cancelada.")
         return sorted(normalized, key=lambda game: (game["name"].casefold(), game["appid"]))
 
+    def profile_summary(self, steamid):
+        response = self._get("ISteamUser/GetPlayerSummaries/v2", {"steamids": steamid})
+        players = response.get("players")
+        if not isinstance(players, list) or not players:
+            raise SteamError("A Steam não disponibilizou o nome deste perfil.")
+        player = next((item for item in players if isinstance(item, dict) and item.get("steamid") == steamid), None)
+        name = player.get("personaname") if player else None
+        if not isinstance(name, str) or not name.strip():
+            raise SteamError("A Steam não disponibilizou o nome deste perfil.")
+        return {"steamid": steamid, "personaname": name.strip()}
+
     def player_achievements(self, steamid, appid):
         stats = self._get(
             "ISteamUserStats/GetPlayerAchievements/v1",
@@ -170,6 +186,21 @@ class SteamClient:
             "items": items,
             "error": None,
         }
+
+    def achievement_schema(self, appid):
+        game = self._get("ISteamUserStats/GetSchemaForGame/v2", {"appid": appid, "l": "brazilian"}, root="game")
+        achievements = game.get("availableGameStats", {}).get("achievements")
+        if not isinstance(achievements, list):
+            raise SteamError("A Steam não disponibilizou os ícones deste jogo.")
+        result = {}
+        for item in achievements:
+            if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                continue
+            result[item["name"]] = {
+                "icon": item.get("icon") if isinstance(item.get("icon"), str) else None,
+                "icon_gray": item.get("icongray") if isinstance(item.get("icongray"), str) else None,
+            }
+        return result
 
 
 def normalize_game(game):

@@ -21,6 +21,7 @@ from .storage import (
     save_library,
     save_trophy_guide,
     save_trophy_guide_error,
+    update_personaname,
 )
 from .trophy import fetch_trophy_guide
 
@@ -119,7 +120,14 @@ class LibraryService:
         ):
             return cached
         try:
-            result = (self.client or SteamClient(self.api_key)).player_achievements(steamid, appid)
+            client = self.client or SteamClient(self.api_key)
+            result = client.player_achievements(steamid, appid)
+            if isinstance(client, SteamClient):
+                try:
+                    assets = client.achievement_schema(appid)
+                    result["items"] = [{**item, **assets.get(item["apiname"], {})} for item in result["items"]]
+                except SteamError:
+                    pass
             save_achievements(self.database, steamid, appid, result, now.isoformat())
             result = {**result, "imported_at": now.isoformat()}
         except SteamError as error:
@@ -144,6 +152,13 @@ class LibraryService:
             cached = load_library(self.database, steamid)
             now = datetime.now(timezone.utc)
             if cached and not refresh:
+                if not cached.get("personaname") and (self.client is None or isinstance(self.client, SteamClient)):
+                    try:
+                        profile_client = self.client or SteamClient(self.api_key)
+                        cached["personaname"] = profile_client.profile_summary(steamid)["personaname"]
+                        update_personaname(self.database, steamid, cached["personaname"])
+                    except SteamError:
+                        pass
                 age = (now - datetime.fromisoformat(cached["imported_at"])).total_seconds()
                 if age < self.cache_seconds:
                     return {**cached, "cached": True, "warning": None}
@@ -159,7 +174,13 @@ class LibraryService:
                     }
                 raise
             imported_at = datetime.now(timezone.utc).isoformat()
-            save_library(self.database, steamid, games, imported_at)
+            personaname = None
+            if isinstance(client, SteamClient):
+                try:
+                    personaname = client.profile_summary(steamid)["personaname"]
+                except SteamError:
+                    personaname = cached.get("personaname") if cached else None
+            save_library(self.database, steamid, games, imported_at, personaname)
             if refresh:
                 expire_achievements(self.database, steamid)
                 with self._achievement_lock:
@@ -168,6 +189,7 @@ class LibraryService:
                             del self._achievements[key]
             return {
                 "steamid": steamid,
+                "personaname": personaname or (cached or {}).get("personaname"),
                 "imported_at": imported_at,
                 "game_count": len(games),
                 "games": games,

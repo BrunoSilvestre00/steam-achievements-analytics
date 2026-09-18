@@ -18,7 +18,7 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='style.css') }}?v=2"
+      href="{{ url_for('static', path='style.css') }}?v=7"
     />
     <link
       rel="stylesheet"
@@ -41,15 +41,19 @@
           src="{{ url_for('static', path='logo.png') }}"
           alt=""
         /><span
-          >steam<span class="brand-light">achievement analytics</span></span
+          >steam<span class="brand-light">achievement analytics</span>{% if library is defined and library.personaname %}<span class="brand-user"> | {{ library.personaname }}</span>{% endif %}</span
         ></a
       ><span class="header-note">UM JOGO DE CADA VEZ.</span>
     </header>
     <main>{% block content %}{% endblock %}</main>
-    <footer>
-      <span>Steam Achievement Analytics</span
-      ><span>Seu caminho até o próximo 100%.</span
-      ><span>Projeto independente · Dados da Steam</span>
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <a href="/" class="footer-logo"><img src="{{ url_for('static', path='logo.png') }}" alt="" /><span>Steam Achievement Analytics</span></a>
+        <span class="footer-credit">© 2026 Bruno Silvestre · <a href="https://github.com/BrunoSilvestre00" target="_blank" rel="noopener noreferrer">GitHub</a> · <a href="https://www.linkedin.com/in/bruno-silvestre/" target="_blank" rel="noopener noreferrer">LinkedIn</a></span>
+      </div>
+      <div class="footer-column"><span class="footer-label">NAVEGAÇÃO</span><a href="/">Início</a><a href="/">Minha biblioteca</a></div>
+      <div class="footer-column"><span class="footer-label">FONTES</span><a href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer">Steam</a><a href="https://howlongtobeat.com/" target="_blank" rel="noopener noreferrer">HowLongToBeat</a><a href="https://psnprofiles.com/" target="_blank" rel="noopener noreferrer">PSNProfiles</a></div>
+      <div class="footer-column footer-meta"><span class="footer-label">PROJETO</span><span>FastAPI · SQLite · Redis</span><span>Dados consultados sob demanda</span></div>
     </footer>
   </body>
 </html>

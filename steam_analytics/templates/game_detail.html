@@ -191,6 +191,14 @@
       <div class="achievement-list">
         {% for achievement in achievements['items'] %}
         <div class="achievement-row">
+          {% if achievement.icon or achievement.icon_gray %}<img
+            class="achievement-icon"
+            src="{{ achievement.icon if achievement.unlocked or not achievement.icon_gray else achievement.icon_gray }}"
+            alt=""
+            width="64"
+            height="64"
+            loading="lazy"
+          />{% endif %}
           <span
             class="achievement-mark{% if achievement.unlocked %} unlocked{% endif %}"
             aria-hidden="true"

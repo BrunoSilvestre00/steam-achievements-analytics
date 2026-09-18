@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS libraries (
     steamid TEXT PRIMARY KEY,
+    personaname TEXT,
     imported_at TEXT NOT NULL,
     game_count INTEGER NOT NULL CHECK (game_count >= 0)
 );
@@ -23,6 +24,8 @@ CREATE TABLE IF NOT EXISTS achievement_definitions (
     apiname TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    icon TEXT,
+    icon_gray TEXT,
     PRIMARY KEY (appid, apiname)
 );
 

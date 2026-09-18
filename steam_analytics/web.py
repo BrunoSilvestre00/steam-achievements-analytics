@@ -75,7 +75,7 @@ def create_app(*, service=None):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; style-src 'self'; img-src 'self' https://cdn.akamai.steamstatic.com; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"
+            "default-src 'self'; style-src 'self'; img-src 'self' https://cdn.akamai.steamstatic.com https://steamcdn-a.akamaihd.net; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"
         )
         if not request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store"

@@ -19,7 +19,7 @@ def connect(path):
     db.execute("PRAGMA foreign_keys = ON")
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 5:
+        if version > 7:
             raise sqlite3.DatabaseError("Versão do banco não suportada")
         if version == 0:
             with db:
@@ -80,6 +80,22 @@ def connect(path):
                     "CREATE TABLE IF NOT EXISTS game_links (id INTEGER PRIMARY KEY AUTOINCREMENT, steamid TEXT NOT NULL REFERENCES libraries(steamid), appid INTEGER NOT NULL REFERENCES games(appid), label TEXT NOT NULL, url TEXT NOT NULL, created_at TEXT NOT NULL)"
                 )
                 db.execute("PRAGMA user_version = 5")
+                version = 5
+        if version < 6:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(libraries)")}
+                if "personaname" not in columns:
+                    db.execute("ALTER TABLE libraries ADD COLUMN personaname TEXT")
+                db.execute("PRAGMA user_version = 6")
+                version = 6
+        if version < 7:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(achievement_definitions)")}
+                if "icon" not in columns:
+                    db.execute("ALTER TABLE achievement_definitions ADD COLUMN icon TEXT")
+                if "icon_gray" not in columns:
+                    db.execute("ALTER TABLE achievement_definitions ADD COLUMN icon_gray TEXT")
+                db.execute("PRAGMA user_version = 7")
         yield db
     finally:
         db.close()
@@ -105,13 +121,13 @@ def load_library(path, steamid):
         return {**dict(library), "games": games}
 
 
-def save_library(path, steamid, games, imported_at):
+def save_library(path, steamid, games, imported_at, personaname=None):
     with connect(path) as db, db:
         db.execute(
-            """INSERT INTO libraries VALUES (?, ?, ?)
-            ON CONFLICT(steamid) DO UPDATE SET imported_at=excluded.imported_at,
-            game_count=excluded.game_count""",
-            (steamid, imported_at, len(games)),
+            """INSERT INTO libraries (steamid, personaname, imported_at, game_count) VALUES (?, ?, ?, ?)
+            ON CONFLICT(steamid) DO UPDATE SET personaname=COALESCE(excluded.personaname, libraries.personaname),
+            imported_at=excluded.imported_at, game_count=excluded.game_count""",
+            (steamid, personaname, imported_at, len(games)),
         )
         db.executemany(
             """INSERT INTO games VALUES (?, ?)
@@ -125,12 +141,23 @@ def save_library(path, steamid, games, imported_at):
         )
 
 
+def update_personaname(path, steamid, personaname):
+    with connect(path) as db:
+        db.execute("UPDATE libraries SET personaname=? WHERE steamid=?", (personaname, steamid))
+
+
 def save_achievements(path, steamid, appid, result, imported_at):
     with connect(path) as db, db:
         db.executemany(
-            """INSERT INTO achievement_definitions VALUES (?, ?, ?, ?)
-            ON CONFLICT(appid, apiname) DO UPDATE SET name=excluded.name, description=excluded.description""",
-            [(appid, item["apiname"], item["name"], item["description"]) for item in result["items"]],
+            """INSERT INTO achievement_definitions (appid, apiname, name, description, icon, icon_gray)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(appid, apiname) DO UPDATE SET name=excluded.name, description=excluded.description,
+            icon=COALESCE(excluded.icon, achievement_definitions.icon),
+            icon_gray=COALESCE(excluded.icon_gray, achievement_definitions.icon_gray)""",
+            [
+                (appid, item["apiname"], item["name"], item["description"], item.get("icon"), item.get("icon_gray"))
+                for item in result["items"]
+            ],
         )
         db.execute("DELETE FROM player_achievements WHERE steamid = ? AND appid = ?", (steamid, appid))
         db.executemany(
@@ -213,7 +240,7 @@ def load_achievements(path, steamid, appid):
             {**dict(row), "unlocked": bool(row["unlocked"])}
             for row in db.execute(
                 """
-            SELECT d.apiname, d.name, d.description, p.unlocked
+            SELECT d.apiname, d.name, d.description, d.icon, d.icon_gray, p.unlocked
             FROM player_achievements p JOIN achievement_definitions d
               ON d.appid = p.appid AND d.apiname = p.apiname
             WHERE p.steamid = ? AND p.appid = ? ORDER BY d.apiname""",

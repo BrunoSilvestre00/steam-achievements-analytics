@@ -13,6 +13,7 @@ __pycache__/
 htmlcov/
 .hypothesis/
 pytest-cache-files-*/
+.pytest-tmp/
 node_modules/
 npm-debug.log*
 yarn-debug.log*
