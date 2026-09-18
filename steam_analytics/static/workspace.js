@@ -113,6 +113,85 @@
         button.textContent = "Tentar novamente";
       }
     });
+  document
+    .querySelector("#refresh-mode")
+    ?.addEventListener("change", async (event) => {
+      const select = event.currentTarget;
+      const form = select.form;
+      const sync = document.querySelector("[data-progress-sync]");
+      const syncTitle = sync?.querySelector("[data-progress-title]");
+      const syncLabel = sync?.querySelector("[data-progress-label]");
+      const syncBar = sync?.querySelector("[data-progress-sync-bar]");
+      const messages = {
+        all: [
+          "Atualizando tudo",
+          "Atualizando Steam e consultando até 5 jogos HLTB…",
+        ],
+        steam: [
+          "Atualizando Steam",
+          "Buscando sua biblioteca e progresso na Steam…",
+        ],
+        hltb: [
+          "Atualizando HLTB",
+          "Consultando até 20 jogos sem tempo de completionist…",
+        ],
+      };
+      const [title, label] = messages[select.value] || messages.all;
+      select.disabled = true;
+      if (sync) {
+        sync.hidden = false;
+        sync.classList.remove("is-hidden", "is-done");
+        syncTitle.textContent = title;
+        syncLabel.textContent = label;
+        syncBar?.removeAttribute("value");
+        syncBar?.removeAttribute("max");
+      }
+      try {
+        if (select.value === "hltb") {
+          const profilePath = new URL(form.action, window.location.origin)
+            .pathname;
+          const steamid = profilePath.split("/")[2];
+          const endpoint = `/api/profile/${steamid}/hltb`;
+          const initial = await fetch(endpoint);
+          if (!initial.ok) throw new Error("HLTB indisponível");
+          const initialData = await initial.json();
+          const target = Math.min(initialData.pending, 20);
+          let processed = 0;
+          let pending = initialData.pending;
+          if (syncBar) {
+            syncBar.max = Math.max(target, 1);
+            syncBar.value = 0;
+          }
+          while (processed < target && pending > 0) {
+            const response = await fetch(`${endpoint}?limit=1`, {
+              method: "POST",
+            });
+            if (!response.ok) throw new Error("HLTB indisponível");
+            const data = await response.json();
+            if (data.pending >= pending) break;
+            processed = Math.min(target, processed + pending - data.pending);
+            pending = data.pending;
+            if (syncBar) syncBar.value = processed;
+            if (syncLabel)
+              syncLabel.textContent = `${processed} de ${target} jogos HLTB processados…`;
+          }
+          window.location.assign(`${window.location.pathname}?updated=hltb`);
+          return;
+        }
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          redirect: "follow",
+        });
+        if (!response.ok) throw new Error("Atualização indisponível");
+        window.location.assign(response.url);
+      } catch {
+        select.disabled = false;
+        if (syncLabel)
+          syncLabel.textContent =
+            "Não foi possível concluir a atualização. Tente novamente.";
+      }
+    });
   function openModal() {
     modal.hidden = false;
     document.body.classList.add("modal-open");

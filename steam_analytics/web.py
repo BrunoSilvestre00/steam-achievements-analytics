@@ -130,6 +130,7 @@ def create_app(*, service=None):
         ] = "percent_desc",
         played: Literal["all", "played", "unplayed", "platinum", "not_platinum", "near_platinum"] = "all",
         game: int | None = Query(default=None, gt=0),
+        updated: str = Query(default="", max_length=20),
     ):
         library = app.state.library.get_library(steamid)
         all_games = library["games"]
@@ -217,6 +218,7 @@ def create_app(*, service=None):
                 "hltb": hltb,
                 "trophy_guide": trophy_guide,
                 "progress_pending": sum(item["needs_update"] for item in progress.values()),
+                "updated": updated,
                 "hltb_pending": len([item for item in all_games if item["hltb"] is None]),
                 "total_minutes": sum(known),
                 "played_count": sum(v > 0 for v in known),
@@ -294,11 +296,19 @@ def create_app(*, service=None):
         return result
 
     @app.post("/profile/{steamid}/refresh", response_class=HTMLResponse)
-    def refresh_profile(request: Request, steamid: str):
-        library = app.state.library.get_library(steamid, refresh=True)
-        if library["warning"]:
-            return render(request, "error.html", {"error": library["warning"], "steamid": steamid}, 502)
-        app.state.library.hltb_progress(steamid, update=True)
+    def refresh_profile(
+        request: Request,
+        steamid: str,
+        mode: Literal["all", "steam", "hltb"] = Form("all"),
+    ):
+        if mode in ("all", "steam"):
+            library = app.state.library.get_library(steamid, refresh=True)
+            if library["warning"]:
+                return render(request, "error.html", {"error": library["warning"], "steamid": steamid}, 502)
+        if mode == "all":
+            app.state.library.hltb_progress(steamid, update=True, limit=5)
+        elif mode == "hltb":
+            app.state.library.hltb_progress(steamid, update=True, limit=20)
         app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
         return RedirectResponse(f"/profile/{steamid}", status_code=303)
 
@@ -339,8 +349,8 @@ def create_app(*, service=None):
         return result
 
     @app.post("/api/profile/{steamid}/hltb")
-    def hltb_update(steamid: str):
-        result = app.state.library.hltb_progress(steamid, update=True)
+    def hltb_update(steamid: str, limit: int = Query(default=20, ge=1, le=20)):
+        result = app.state.library.hltb_progress(steamid, update=True, limit=limit)
         app.state.cache.invalidate(f"hltb:{steamid}", f"profile:{steamid}")
         return result
 

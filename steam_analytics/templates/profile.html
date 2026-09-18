@@ -13,8 +13,17 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       rel="noopener noreferrer"
       >{{ library.personaname or 'Perfil Steam' }} ↗</a
     >
-    <form action="/profile/{{ library.steamid }}/refresh" method="post">
-      <button class="secondary" type="submit">↻ Atualizar</button>
+    <form
+      class="refresh-form"
+      action="/profile/{{ library.steamid }}/refresh"
+      method="post"
+    >
+      <label class="sr-only" for="refresh-mode">Tipo de atualização</label>
+      <select id="refresh-mode" name="mode" aria-label="Tipo de atualização">
+        <option value="all">↻ Atualizar tudo</option>
+        <option value="steam">Atualizar só Steam</option>
+        <option value="hltb">Atualizar só HLTB</option>
+      </select>
     </form>
   </div>
 </div>
@@ -98,10 +107,10 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       {% endif %}
     </section>
     <section
-      class="progress-sync{% if not progress_pending %} is-hidden{% endif %}"
+      class="progress-sync{% if not progress_pending or updated == 'hltb' %} is-hidden{% endif %}"
       data-progress-sync
       aria-live="polite"
-      {% if not progress_pending %}hidden{% endif %}
+      {% if not progress_pending or updated == 'hltb' %}hidden{% endif %}
     >
       <div class="progress-sync-icon" aria-hidden="true"><span></span></div>
       <div class="progress-sync-copy">
@@ -127,6 +136,7 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       data-sort="{{ sort }}"
       data-progress-url="/api/profile/{{ library.steamid }}/progress"
       data-pending="{{ progress_pending }}"
+      data-skip-progress="{{ 'true' if updated == 'hltb' else 'false' }}"
     >
       {% for item in games %}
       <a

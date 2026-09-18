@@ -152,5 +152,6 @@
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) location.reload();
   });
-  if (Number(grid.dataset.pending) > 0) update();
+  if (grid.dataset.skipProgress !== "true" && Number(grid.dataset.pending) > 0)
+    update();
 })();

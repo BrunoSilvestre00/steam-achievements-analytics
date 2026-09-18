@@ -57,7 +57,7 @@ class LibraryService:
                 save_hltb_error(self.database, appid, result)
                 return result
 
-    def hltb_progress(self, steamid, *, update=False):
+    def hltb_progress(self, steamid, *, update=False, limit=20):
         library = load_library(self.database, steamid)
         if library is None:
             raise SteamError("Importe a biblioteca antes de consultar os tempos.", 404)
@@ -66,7 +66,9 @@ class LibraryService:
         missing = [game for game in library["games"] if game["appid"] not in saved]
         if update:
             with self._hltb_lock:
-                for game in missing[:2]:
+                # Mantemos as consultas sequenciais para reduzir a chance de bloqueio,
+                # mas aproveitamos cada clique para preencher um lote útil.
+                for game in missing[:limit]:
                     self.hltb(game["appid"], game["name"])
             saved = load_hltb_summary(self.database, appids)
         return {
