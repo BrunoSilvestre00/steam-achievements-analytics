@@ -97,6 +97,21 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       </div>
       {% endif %}
     </section>
+    <section
+      class="progress-sync{% if not progress_pending %} is-hidden{% endif %}"
+      data-progress-sync
+      aria-live="polite"
+      {% if not progress_pending %}hidden{% endif %}
+    >
+      <div class="progress-sync-icon" aria-hidden="true"><span></span></div>
+      <div class="progress-sync-copy">
+        <strong data-progress-title>Atualizando sua biblioteca</strong>
+        <span data-progress-label>
+          {% if progress_pending %}Preparando consulta de {{ library.game_count }} jogos…{% else %}Tudo atualizado{% endif %}
+        </span>
+      </div>
+      <progress data-progress-sync-bar max="{{ library.game_count or 1 }}" value="{{ (library.game_count or 1) - progress_pending }}"></progress>
+    </section>
     <div class="games-heading">
       <div>
         <span class="eyebrow">ESCOLHA SEU PRÓXIMO JOGO</span>

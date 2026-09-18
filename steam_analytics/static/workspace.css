@@ -51,6 +51,22 @@
 .card-progress small{display:block;color:var(--muted);font-size:9px;margin-top:5px;font-variant-numeric:tabular-nums}
 .progress-status{font-size:10px;color:var(--muted);margin:0 0 12px}
 .progress-status:empty{display:none}
+.progress-sync{display:flex;align-items:center;gap:12px;margin:0 0 15px;padding:11px 14px;border:1px solid var(--blue-mid);border-radius:8px;background:linear-gradient(100deg,#0c3044,#103b50);color:var(--text);transition:opacity .25s,transform .25s}
+.progress-sync[hidden],.progress-sync.is-hidden{display:none}
+.progress-sync-icon{width:25px;height:25px;flex:0 0 25px;display:grid;place-items:center;border:2px solid #4f94ae;border-top-color:var(--accent);border-radius:50%;animation:sync-spin 1s linear infinite}
+.progress-sync-icon span{width:5px;height:5px;background:var(--accent);border-radius:50%}
+.progress-sync.is-done .progress-sync-icon{animation:none;border-color:var(--accent)}
+.progress-sync.is-done .progress-sync-icon span{width:10px;height:5px;border-radius:0 0 0 3px;border-left:2px solid var(--accent);border-bottom:2px solid var(--accent);background:transparent;transform:rotate(-45deg) translate(1px,-1px)}
+.progress-sync-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.progress-sync-copy strong{font-size:11px;font-weight:600}
+.progress-sync-copy span{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.progress-sync>progress{width:115px;flex:0 0 115px;height:5px}
+.game-card.is-pending{opacity:.72}
+.game-card.is-pending .card-progress-heading strong{color:var(--muted)}
+.game-card.is-pending .card-progress progress{background:linear-gradient(90deg,var(--blue-deep),#1c526a,var(--blue-deep));background-size:200% 100%;animation:progress-shimmer 1.4s ease-in-out infinite}
+@keyframes sync-spin{to{transform:rotate(360deg)}}
+@keyframes progress-shimmer{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.progress-sync-icon,.game-card.is-pending .card-progress progress{animation:none}}
 .unplayed-dot{color:var(--blue-light)}
 .library-sync{font-size:8px;color:var(--muted);margin:15px 0 0}
 .detail-pane{overflow-y:auto;background:#0a2638;position:relative;scrollbar-width:thin;scrollbar-color:var(--blue-mid) transparent}

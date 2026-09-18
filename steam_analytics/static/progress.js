@@ -2,6 +2,10 @@
 (() => {
   const grid = document.querySelector(".game-grid[data-progress-url]");
   const status = document.getElementById("progress-status");
+  const sync = document.querySelector("[data-progress-sync]");
+  const syncTitle = sync?.querySelector("[data-progress-title]");
+  const syncLabel = sync?.querySelector("[data-progress-label]");
+  const syncBar = sync?.querySelector("[data-progress-sync-bar]");
   if (!grid || !status) return;
   const cards = new Map(
     [...grid.querySelectorAll("[data-game]")].map((card) => [
@@ -14,7 +18,44 @@
   let timer;
   const controller = new AbortController();
 
+  function renderSync(data) {
+    if (!sync) return;
+    const total = data.games.length;
+    const pending = data.pending;
+    const completed = Math.max(0, total - pending);
+    sync.hidden = false;
+    sync.classList.toggle("is-done", pending === 0);
+    sync.classList.toggle("is-hidden", false);
+    grid.classList.toggle("is-syncing", pending > 0);
+    if (syncBar) {
+      syncBar.max = Math.max(total, 1);
+      syncBar.value = completed;
+    }
+    if (syncTitle) {
+      syncTitle.textContent = pending
+        ? "Atualizando sua biblioteca"
+        : "Biblioteca atualizada";
+    }
+    if (syncLabel) {
+      syncLabel.textContent = pending
+        ? `${completed} de ${total} jogos processados · buscando conquistas…`
+        : `${total} jogos processados · seus percentuais estão em dia`;
+    }
+    for (const game of data.games) {
+      const card = cards.get(game.appid);
+      if (card) card.classList.toggle("is-pending", game.needs_update);
+    }
+    if (!pending) {
+      window.setTimeout(() => {
+        if (sync && !sync.classList.contains("is-done")) return;
+        sync?.classList.add("is-hidden");
+        if (sync) sync.hidden = true;
+      }, 1800);
+    }
+  }
+
   function renderProgress(data) {
+    renderSync(data);
     for (const game of data.games) {
       const card = cards.get(game.appid);
       if (!card) continue;
