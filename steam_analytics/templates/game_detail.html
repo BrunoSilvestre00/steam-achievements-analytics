@@ -1,0 +1,225 @@
+{% if selected %}
+<article class="game-detail-content" data-selected-game="{{ selected.appid }}">
+  <div class="detail-art">
+    <span class="art-fallback" aria-hidden="true">{{ selected.name }}</span
+    ><img
+      src="https://cdn.akamai.steamstatic.com/steam/apps/{{ selected.appid }}/header.jpg"
+      alt="Capa de {{ selected.name }}"
+      width="460"
+      height="215"
+    /><span class="detail-art-label">SEU PRÓXIMO 100%</span>
+  </div>
+  <div class="detail-body">
+    <div class="detail-kicker">
+      <span class="eyebrow">EM SUA BIBLIOTECA</span
+      ><span
+        ><a
+          href="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace"
+          class="detail-workspace-link"
+          >Área do jogo ↗</a
+        >
+        ·
+        <a
+          href="{{ selected.store_url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Ver na Steam ↗</a
+        ></span
+      >
+    </div>
+    <h2>{{ selected.name }}</h2>
+    <div class="detail-playtime">
+      <span
+        >{{ selected.playtime_forever | hours }}{% if selected.playtime_forever
+        is not none %} horas jogadas{% else %} tempo indisponível{% endif
+        %}</span
+      ><span>APP {{ selected.appid }}</span>
+    </div>
+    <section class="completion-section" aria-labelledby="completion-title">
+      <div class="detail-section-heading">
+        <h3 id="completion-title">Caminho até o 100%</h3>
+        <span class="source-badge">STEAM</span>
+      </div>
+      {% if achievements.available and achievements.error %}
+      <p class="detail-note" role="status">{{ achievements.error }}</p>
+      {% endif %} {% if achievements.available and achievements.total > 0 %}
+      <div class="progress-heading">
+        <strong>{{ achievements.percent }}<span>%</span></strong>
+        <p>
+          {{ achievements.unlocked }} de {{ achievements.total }} conquistas
+        </p>
+      </div>
+      <progress
+        value="{{ achievements.unlocked }}"
+        max="{{ achievements.total }}"
+        aria-label="Conquistas desbloqueadas"
+      >
+        {{ achievements.percent }}%
+      </progress>
+      {% if achievements.complete %}
+      <p class="completion-note accent">
+        Todas as conquistas desbloqueadas. Mais um 100% para a coleção.
+      </p>
+      {% else %}
+      <p class="completion-note">
+        Faltam {{ achievements.total - achievements.unlocked }} conquistas para
+        completar este jogo.
+      </p>
+      {% endif %} {% elif achievements.available %}
+      <p class="detail-note">
+        A Steam retornou uma lista sem conquistas para este jogo.
+      </p>
+      {% else %}
+      <p class="detail-note">{{ achievements.error }}</p>
+      {% endif %}
+    </section>
+    <section class="planning-section" aria-labelledby="planning-title">
+      <div class="detail-section-heading">
+        <h3 id="planning-title">Planeje a platina</h3>
+        <span class="source-badge">HLTB</span>
+      </div>
+      {% if hltb and not hltb.error %}
+      <div class="planning-grid">
+        <div>
+          <span>História principal</span
+          ><strong
+            >{% if hltb.main_story is not none %}{{ hltb.main_story | round(1)
+            }} h{% else %}—{% endif %}</strong
+          ><small>Tempo médio no HowLongToBeat</small>
+        </div>
+        <div>
+          <span>Completionist</span
+          ><strong
+            >{% if hltb.completionist is not none %}{{ hltb.completionist |
+            round(1) }} h{% else %}—{% endif %}</strong
+          ><small>Estimativa para completar tudo</small>
+        </div>
+      </div>
+      <p class="guide-placeholder">
+        Correspondência: <strong>{{ hltb.matched_name }}</strong> · {{
+        (hltb.similarity * 100) | round(0) }}% de similaridade{% if hltb.url %}
+        ·
+        <a href="{{ hltb.url }}" target="_blank" rel="noopener noreferrer"
+          >Abrir no HLTB ↗</a
+        >{% endif %}
+      </p>
+      {% else %}
+      <div class="planning-grid">
+        <div>
+          <span>Tempo para 100%</span><strong>—</strong
+          ><small>{{ hltb.error if hltb else 'A consultar' }}</small>
+        </div>
+        <div>
+          <span>Dificuldade</span><strong>—</strong
+          ><small>Guias ainda não conectados</small>
+        </div>
+      </div>
+      <p class="guide-placeholder">
+        A consulta é salva localmente e será tentada novamente quando você
+        atualizar os dados.
+      </p>
+      {% endif %}
+    </section>
+    <section class="trophy-guide-section" aria-labelledby="trophy-guide-title">
+      <div class="detail-section-heading">
+        <h3 id="trophy-guide-title">Trophy Guide</h3>
+        <span class="source-badge">PSNPROFILES</span>
+      </div>
+      {% if trophy_guide and not trophy_guide.error %}
+      <div class="planning-grid">
+        <div>
+          <span>Dificuldade</span
+          ><strong
+            >{% if trophy_guide.difficulty is not none %}{{
+            trophy_guide.difficulty | round(1) }}/10{% else %}—{% endif
+            %}</strong
+          >
+        </div>
+        <div>
+          <span>Playthroughs</span
+          ><strong
+            >{{ trophy_guide.playthroughs if trophy_guide.playthroughs is not
+            none else '—' }}</strong
+          >
+        </div>
+        <div>
+          <span>Horas</span
+          ><strong
+            >{{ trophy_guide.hours_text or (trophy_guide.hours | round(1) if
+            trophy_guide.hours is not none else '—') }}{% if trophy_guide.hours
+            is not none and not trophy_guide.hours_text %} h{% endif %}</strong
+          >
+        </div>
+      </div>
+      <p class="guide-placeholder">
+        <a
+          href="{{ trophy_guide.url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Abrir guia no PSNProfiles ↗</a
+        >
+      </p>
+      {% elif trophy_guide and trophy_guide.error %}
+      <p class="detail-note" role="status">{{ trophy_guide.error }}</p>
+      {% endif %}
+      <form
+        class="trophy-guide-form"
+        data-guide-form="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide"
+      >
+        <label for="trophy-guide-url">URL do guia PSNProfiles</label>
+        <div class="guide-input-row">
+          <input
+            id="trophy-guide-url"
+            name="url"
+            type="url"
+            placeholder="https://psnprofiles.com/guide/..."
+            value="{{ trophy_guide.url if trophy_guide else '' }}"
+            required
+          /><button class="secondary" type="submit">Salvar guia</button>
+        </div>
+        <p class="guide-form-status" role="status"></p>
+      </form>
+    </section>
+    {% if achievements.available and achievements.total > 0 %}
+    <section class="achievement-section">
+      <div class="detail-section-heading">
+        <h3>Conquistas</h3>
+        <span class="muted"
+          >{{ achievements.unlocked }}/{{ achievements.total }}</span
+        >
+      </div>
+      <div class="achievement-list">
+        {% for achievement in achievements['items'] %}
+        <div class="achievement-row">
+          <span
+            class="achievement-mark{% if achievement.unlocked %} unlocked{% endif %}"
+            aria-hidden="true"
+            >{% if achievement.unlocked %}✓{% else %}○{% endif %}</span
+          >
+          <div>
+            <strong>{{ achievement.name }}</strong>{% if achievement.description
+            %}
+            <p>{{ achievement.description }}</p>
+            {% endif %}<small
+              >{% if achievement.unlocked %}Desbloqueada{% else %}Pendente{%
+              endif %}</small
+            >
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    <p class="detail-footnote">
+      100% representa as conquistas retornadas pela Steam, incluindo DLCs quando
+      presentes. Guias de PlayStation podem ter requisitos diferentes.
+    </p>
+  </div>
+</article>
+{% else %}
+<div class="detail-empty">
+  <span class="eyebrow">UM JOGO DE CADA VEZ</span>
+  <h2>Sua próxima conquista começa com uma escolha.</h2>
+  <p>Selecione um jogo da biblioteca para explorar seus detalhes.</p>
+</div>
+{% endif %}

@@ -1,9 +1,19 @@
 # Steam Achievement Analytics
 
-Aplicação web em **Python + FastAPI + Jinja2 + SQLite** para explorar sua biblioteca
-Steam e construir, por etapas, um planejamento de jogos para fazer 100%.
+Aplicação web em **Python + FastAPI + Jinja2 + SQLite** para analisar uma biblioteca
+Steam e planejar o caminho até completar 100% dos jogos. A página inicial mostra
+estatísticas da coleção, jogos platinados recentemente e filtros da biblioteca.
+Cada jogo abre uma modal com detalhes, conquistas Steam, tempos HLTB, notas,
+checklist e links úteis.
 O frontend é HTML/CSS renderizado pelo Python, com um pequeno script JavaScript
 para trocar o painel de detalhes sem recarregar a página. Não precisa de Node ou React.
+
+## Requisitos
+
+- Python 3.10 ou superior
+- Uma chave da Steam Web API
+- Node.js/npm apenas para validar os arquivos JavaScript com Prettier
+- Docker e Docker Compose (opcionais)
 
 ## Rodar localmente (PowerShell)
 
@@ -52,7 +62,7 @@ ficam em cache por 5 minutos; importações e atualizações invalidam as chaves
 relacionadas imediatamente. Se o Redis estiver indisponível fora do Compose, a
 aplicação continua funcionando sem cache.
 
-## O que funciona
+## Funcionalidades
 
 - Tela dividida por `/profile/{steamid}`: cards à esquerda e detalhes à direita.
 - Seleção de jogo sem recarregar a página, com capa, horas jogadas e conquistas Steam.
@@ -65,7 +75,7 @@ aplicação continua funcionando sem cache.
 - O parâmetro `?game=APPID` preserva o jogo selecionado ao compartilhar ou recarregar a URL.
 - Busca por nome, filtro de jogados/não iniciados e ordenação por nome, horas ou última sessão.
 - SQLite com a última biblioteca válida de cada perfil, sem duplicar jogos nas atualizações.
-- Cache de 15 minutos; o botão **Atualizar biblioteca** força uma nova consulta.
+- Cache dos endpoints por 5 minutos; o botão **Atualizar biblioteca** força uma nova consulta.
 - Último resultado salvo com aviso quando uma atualização falha.
 - Conquistas persistidas no SQLite: detalhes com cache de 5 minutos e atualização
   dos percentuais da biblioteca a cada 15 minutos. Falhas também são registradas para
@@ -142,6 +152,31 @@ configurar a chave e consultar seu perfil real.
 Cobertura: contrato da Steam, resolução de perfis, falhas de rede, biblioteca
 privada/vazia, cache, preservação de dados em falhas, isolamento entre perfis,
 renderização HTML, escape de conteúdo externo, busca, filtros e atualização.
+
+## Qualidade e hooks de commit
+
+O projeto usa Ruff para Python, djLint com perfil Jinja para os templates e
+Prettier para os arquivos JavaScript. O pre-commit executa esses checks e bloqueia
+o commit quando algum deles falhar.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+$env:PRE_COMMIT_HOME = "$PWD/.pre-commit-cache"
+.\.venv\Scripts\pre-commit.exe install
+.\.venv\Scripts\pre-commit.exe run --all-files
+```
+
+Para executar os checks manualmente:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check steam_analytics tests
+.\.venv\Scripts\python.exe -m ruff format --check steam_analytics tests
+.\.venv\Scripts\python.exe scripts/lint_templates.py
+npx.cmd prettier --check "steam_analytics/static/*.js"
+```
+
+Templates Jinja não passam pelo Prettier, porque ele não interpreta blocos de
+template. O djLint é responsável por validar essa camada.
 
 ## Estrutura
 

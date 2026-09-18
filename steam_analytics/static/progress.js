@@ -1,0 +1,115 @@
+// Os percentuais são calculados e persistidos pelo Python; o navegador atualiza os cards.
+(() => {
+  const grid = document.querySelector(".game-grid[data-progress-url]");
+  const status = document.getElementById("progress-status");
+  if (!grid || !status) return;
+  const cards = new Map(
+    [...grid.querySelectorAll("[data-game]")].map((card) => [
+      Number(card.dataset.game),
+      card,
+    ]),
+  );
+  const numbers = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+  let stopped = false;
+  let timer;
+  const controller = new AbortController();
+
+  function renderProgress(data) {
+    for (const game of data.games) {
+      const card = cards.get(game.appid);
+      if (!card) continue;
+      card.dataset.percent = game.percent === null ? "" : String(game.percent);
+      card.classList.toggle("is-complete", game.percent === 100);
+      const container = card.querySelector(".card-progress");
+      container.dataset.progressState = game.state;
+      card.querySelector("[data-percent-label]").textContent =
+        game.percent !== null
+          ? `${numbers.format(game.percent)}%`
+          : {
+              empty: "Sem conquistas",
+              unavailable: "Indisponível",
+              pending: "A consultar",
+            }[game.state];
+      const progress = card.querySelector("[data-card-progress]");
+      progress.hidden = game.percent === null;
+      progress.value = game.percent ?? 0;
+      card.querySelector("[data-progress-count]").textContent =
+        game.percent !== null
+          ? `${game.unlocked}/${game.total} desbloqueadas${game.stale ? " · salvo" : ""}`
+          : "—";
+    }
+    const completeCards = [...grid.querySelectorAll(".game-card.is-complete")];
+    const totalLabel = document.getElementById("platinum-total-count");
+    const recentList = document.getElementById("recent-platinums-list");
+    if (totalLabel) totalLabel.textContent = completeCards.length;
+    if (recentList && completeCards.length) {
+      recentList.replaceChildren(
+        ...completeCards.slice(0, 6).map((card) => {
+          const link = document.createElement("a");
+          link.href = card.href;
+          link.title = card.dataset.gameName;
+          const image = document.createElement("img");
+          image.src = `https://cdn.akamai.steamstatic.com/steam/apps/${card.dataset.game}/library_600x900_2x.jpg`;
+          image.alt = card.dataset.gameName;
+          image.loading = "lazy";
+          const label = document.createElement("span");
+          label.textContent = card.dataset.gameName;
+          link.append(image, label);
+          return link;
+        }),
+      );
+    }
+    if (["percent_desc", "percent_asc"].includes(grid.dataset.sort)) {
+      const direction = grid.dataset.sort === "percent_desc" ? -1 : 1;
+      const ordered = [...cards.values()].sort((a, b) => {
+        const aUnknown = a.dataset.percent === "";
+        const bUnknown = b.dataset.percent === "";
+        if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
+        return (
+          (Number(a.dataset.percent) - Number(b.dataset.percent)) * direction ||
+          Number(a.dataset.nameOrder) - Number(b.dataset.nameOrder)
+        );
+      });
+      ordered.forEach((card) => grid.append(card));
+    }
+    document.dispatchEvent(new Event("cards-progress-updated"));
+    const unavailable = data.games.filter(
+      (game) => game.state === "unavailable",
+    ).length;
+    status.textContent = data.pending
+      ? `Consultando conquistas: ${data.pending} jogos restantes…`
+      : `Percentuais atualizados.${unavailable ? ` ${unavailable} jogos com dados indisponíveis.` : ""}`;
+  }
+
+  async function update(method = "POST") {
+    if (stopped) return;
+    try {
+      const response = await fetch(grid.dataset.progressUrl, {
+        method,
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Consulta indisponível");
+      const data = await response.json();
+      if (stopped) return;
+      renderProgress(data);
+      if (method === "POST" && data.pending)
+        timer = setTimeout(() => update(), 350);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        status.textContent =
+          "Consulta de percentuais interrompida. Os dados salvos foram mantidos; recarregue para tentar novamente.";
+      }
+    }
+  }
+
+  document.addEventListener("game-details-loaded", () => update("GET"));
+  window.addEventListener("pagehide", () => {
+    stopped = true;
+    clearTimeout(timer);
+    controller.abort();
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) location.reload();
+  });
+  if (Number(grid.dataset.pending) > 0) update();
+})();

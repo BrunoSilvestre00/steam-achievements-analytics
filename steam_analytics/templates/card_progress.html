@@ -1,0 +1,30 @@
+<div class="card-progress" data-progress-state="{{ item.progress.state }}">
+  <div class="card-progress-heading">
+    <span>Conquistas</span
+    ><strong data-percent-label
+      >{% if item.progress.percent is not none %}{{ item.progress.percent |
+      percentage }}%{% elif item.progress.state == 'empty' %}Sem conquistas{%
+      elif item.progress.state == 'unavailable' %}Indisponível{% else %}A
+      consultar{% endif %}</strong
+    >
+  </div>
+  <progress
+    data-card-progress
+    max="100"
+    value="{{ item.progress.percent or 0 }}"
+    aria-label="Conquistas de {{ item.name }}"
+    {%
+    if
+    item.progress.percent
+    is
+    none
+    %}hidden{%
+    endif
+    %}
+  ></progress>
+  <small data-progress-count
+    >{% if item.progress.percent is not none %}{{ item.progress.unlocked }}/{{
+    item.progress.total }} desbloqueadas{% if item.progress.stale %} · salvo{%
+    endif %}{% else %}—{% endif %}</small
+  >
+</div>

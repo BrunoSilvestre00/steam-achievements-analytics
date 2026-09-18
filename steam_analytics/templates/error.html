@@ -1,0 +1,14 @@
+{% extends "base.html" %} {% block title %}Não foi possível consultar · Steam
+Analytics{% endblock %} {% block content %}
+<section class="error-panel">
+  <div class="eyebrow">CONSULTA INDISPONÍVEL</div>
+  <h1>A biblioteca ainda não chegou.</h1>
+  <p class="lead" role="alert">{{ error }}</p>
+  {% if steamid %}<a class="button" href="/profile/{{ steamid }}"
+    >Ver biblioteca salva</a
+  >{% else %}<a class="button" href="/">Voltar para o início</a>{% endif %}
+  <p class="muted">
+    Confira o SteamID e a visibilidade de “Detalhes dos jogos” no perfil Steam.
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+<form action="/profile" method="get" class="inline-profile-form">
+  <label for="profile">Seu perfil Steam</label>
+  <div class="input-action">
+    <input
+      id="profile"
+      name="profile"
+      required
+      maxlength="250"
+      value="{{ profile_input | default('') }}"
+      placeholder="https://steamcommunity.com/id/seu-perfil/"
+      autocomplete="off"
+      aria-describedby="profile-help{% if profile_error %} profile-error{% endif %}"
+    /><button type="submit">Carregar biblioteca ↗</button>
+  </div>
+  <p id="profile-help" class="muted">
+    Cole o link completo do perfil. Também aceitamos o nome personalizado ou o
+    SteamID de 17 dígitos.
+  </p>
+  {% if profile_error %}
+  <p id="profile-error" class="notice" role="alert">{{ profile_error }}</p>
+  {% endif %}
+</form>

@@ -1,0 +1,109 @@
+{% extends "base.html" %} {% block title %}{{ selected.name }} · Área de
+planejamento{% endblock %} {% block body_class %}workspace-page{% endblock %} {%
+block content %}
+<div class="workspace-toolbar">
+  <div>
+    <a
+      class="back-link"
+      href="/profile/{{ library.steamid }}?game={{ selected.appid }}"
+      >← Voltar à biblioteca</a
+    >
+    <h1>{{ selected.name }}<span class="accent">.</span></h1>
+  </div>
+  <a
+    class="secondary button"
+    href="https://store.steampowered.com/app/{{ selected.appid }}/"
+    target="_blank"
+    >Steam ↗</a
+  >
+</div>
+<div class="game-workspace">
+  <div class="workspace-hero">
+    <img
+      src="https://cdn.akamai.steamstatic.com/steam/apps/{{ selected.appid }}/header.jpg"
+      alt=""
+    />
+    <div>
+      <span class="eyebrow">ÁREA DE PLANEJAMENTO</span>
+      <p>
+        Organize sua rota até o 100%, anote decisões e reúna os melhores links
+        em um só lugar.
+      </p>
+    </div>
+  </div>
+  <div class="workspace-columns">
+    <section class="planner-card">
+      <h2>Checklist</h2>
+      <form
+        method="post"
+        action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist"
+      >
+        <input
+          name="label"
+          placeholder="Ex.: verificar troféus perdíveis"
+          required
+        /><button type="submit">Adicionar</button>
+      </form>
+      {% for item in workspace.checklist %}<label class="check-item"
+        ><input
+          type="checkbox"
+          {%
+          if
+          item.checked
+          %}checked{%
+          endif
+          %}
+          onchange="fetch('/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist/{{ item.id }}',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({checked:this.checked})})"
+        /><span class="check-label{% if item.checked %} checked{% endif %}"
+          >{{ item.label }}</span
+        ></label
+      >{% else %}
+      <p class="muted">Adicione os passos da sua rota.</p>
+      {% endfor %}
+    </section>
+    <section class="planner-card">
+      <h2>Notas</h2>
+      <form
+        method="post"
+        action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/note"
+      >
+        <textarea
+          name="body"
+          rows="4"
+          placeholder="Estratégia, decisões, troféus perdíveis…"
+          required
+        ></textarea
+        ><button type="submit">Salvar nota</button>
+      </form>
+      {% for note in workspace.notes %}
+      <article class="saved-note">{{ note.body }}</article>
+      {% else %}
+      <p class="muted">Nenhuma nota salva ainda.</p>
+      {% endfor %}
+    </section>
+    <section class="planner-card">
+      <h2>Links úteis</h2>
+      <form
+        method="post"
+        action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/link"
+      >
+        <input name="label" placeholder="Nome do link" required /><input
+          name="url"
+          type="url"
+          placeholder="https://…"
+          required
+        /><button type="submit">Adicionar link</button>
+      </form>
+      {% for link in workspace.links %}<a
+        class="saved-link"
+        href="{{ link.url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+        >{{ link.label }} ↗</a
+      >{% else %}
+      <p class="muted">Guia, wiki, vídeo ou mapa.</p>
+      {% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

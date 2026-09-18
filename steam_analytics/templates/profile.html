@@ -1,0 +1,196 @@
+{% extends "base.html" %} {% block title %}Biblioteca {{ library.steamid }} ·
+Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
+{% block content %}
+<div class="workspace-toolbar">
+  <div>
+    <span class="eyebrow">SUA BIBLIOTECA, EM PERSPECTIVA</span>
+    <h1>Sua próxima conquista<span class="accent">.</span></h1>
+  </div>
+  <div class="toolbar-meta">
+    <a
+      href="https://steamcommunity.com/profiles/{{ library.steamid }}/"
+      target="_blank"
+      rel="noopener noreferrer"
+      >Perfil {{ library.steamid }} ↗</a
+    >
+    <form action="/profile/{{ library.steamid }}/refresh" method="post">
+      <button class="secondary" type="submit">↻ Atualizar</button>
+    </form>
+  </div>
+</div>
+{% if library.warning %}
+<div class="notice" role="status">{{ library.warning }}</div>
+{% endif %}
+<div id="library-layout">
+  <aside class="filter-sidebar" aria-label="Filtros da biblioteca">
+    <div class="sidebar-heading">
+      <span class="eyebrow">BIBLIOTECA</span>
+      <h2>{{ library.game_count }} <small>jogos</small></h2>
+      <span class="mini-total">{{ total_minutes | hours }} h registradas</span>
+    </div>
+    <details class="profile-switcher">
+      <summary>Trocar perfil</summary>
+      {% include "profile_form.html" %}
+    </details>
+    <form method="get" class="card-filters" action="/profile/{{ library.steamid }}">
+      {% if selected %}<input type="hidden" name="game" value="{{ selected.appid }}">{% endif %}
+      <label for="q">Buscar jogo</label>
+      <input id="q" name="q" placeholder="Nome do jogo…" value="{{ q }}" maxlength="200">
+      <label for="played">Status</label>
+      <select id="played" name="played">
+        <option value="all" {% if played == 'all' %}selected{% endif %}>Todos os jogos</option>
+        <option value="played" {% if played == 'played' %}selected{% endif %}>Já jogados</option>
+        <option value="unplayed" {% if played == 'unplayed' %}selected{% endif %}>Não iniciados</option>
+        <option value="not_platinum" {% if played == 'not_platinum' %}selected{% endif %}>Não platinados</option>
+        <option value="near_platinum" {% if played == 'near_platinum' %}selected{% endif %}>Perto de platinar · 70–99%</option>
+        <option value="platinum" {% if played == 'platinum' %}selected{% endif %}>Já platinados · 100%</option>
+      </select>
+      <label for="sort">Ordenar por</label>
+      <select id="sort" name="sort">
+        <option value="name" {% if sort == 'name' %}selected{% endif %}>Nome: A → Z</option>
+        <option value="hours" {% if sort == 'hours' %}selected{% endif %}>Mais jogados</option>
+        <option value="recent" {% if sort == 'recent' %}selected{% endif %}>Mais recentes</option>
+        <option value="percent_desc" {% if sort == 'percent_desc' %}selected{% endif %}>Maior % de conquistas</option>
+        <option value="percent_asc" {% if sort == 'percent_asc' %}selected{% endif %}>Menor % de conquistas</option>
+        <option value="hltb_desc" {% if sort == 'hltb_desc' %}selected{% endif %}>Maior completionist HLTB</option>
+        <option value="hltb_asc" {% if sort == 'hltb_asc' %}selected{% endif %}>Menor completionist HLTB</option>
+      </select>
+    </form>
+    <div class="sidebar-footer">
+      <div class="library-summary">
+        <span data-filter-count>{{ games | length }} encontrados</span
+        ><span>{{ played_count }} jogados</span>
+      </div>
+      <p class="library-sync">
+        Atualizada em {{ library.imported_at | timestamp }}{% if unknown_count
+        %}<br />{{ unknown_count }} sem tempo informado{% endif %}
+      </p>
+    </div>
+  </aside>
+  <main class="games-main" aria-labelledby="library-title">
+    <section class="platinum-dashboard" aria-label="Resumo de platinas">
+      <div class="platinum-total">
+        <span class="eyebrow">COLEÇÃO</span
+        ><strong id="platinum-total-count">{{ platinum_count }}</strong
+        ><span>jogos platinados</span>
+      </div>
+      <div class="recent-platinums">
+        <span class="eyebrow">ÚLTIMAS PLATINAS</span>
+        <div id="recent-platinums-list">
+          {% for item in recent_platinums %}<a
+            href="/profile/{{ library.steamid }}?game={{ item.appid }}"
+            title="{{ item.name }}"
+            ><img
+              src="https://cdn.akamai.steamstatic.com/steam/apps/{{ item.appid }}/library_600x900_2x.jpg"
+              alt="{{ item.name }}"
+              loading="lazy"
+            /><span>{{ item.name }}</span></a
+          >{% else %}<span class="muted">Nenhuma platina registrada ainda.</span
+          >{% endfor %}
+        </div>
+      </div>
+      {% if platinums_by_year %}
+      <div class="platinum-years">
+        <small>POR ANO</small>{% for year, total in platinums_by_year %}<b
+          >{{ year }} <em>{{ total }}</em></b
+        >{% endfor %}
+      </div>
+      {% endif %}
+    </section>
+    <div class="games-heading">
+      <div>
+        <span class="eyebrow">ESCOLHA SEU PRÓXIMO JOGO</span>
+        <h2 id="library-title">Todos os jogos</h2>
+      </div>
+      <span id="progress-status" class="progress-status" role="status"
+        >{% if progress_pending %}Atualizando {{ progress_pending }}…{% endif
+        %}</span
+      >
+    </div>
+    <div
+      class="game-grid"
+      data-sort="{{ sort }}"
+      data-progress-url="/api/profile/{{ library.steamid }}/progress"
+      data-pending="{{ progress_pending }}"
+    >
+      {% for item in games %}
+      <a
+        class="game-card{% if selected and selected.appid == item.appid %} is-selected{% endif %}{% if item.progress.percent == 100 %} is-complete{% endif %}"
+        href="/profile/{{ library.steamid }}?{{ {'game': item.appid, 'q': q, 'sort': sort, 'played': played} | urlencode }}"
+        data-game="{{ item.appid }}"
+        data-game-name="{{ item.name }}"
+        data-percent="{{ item.progress.percent if item.progress.percent is not none else '' }}"
+        data-hours="{{ item.playtime_forever if item.playtime_forever is not none else '' }}"
+        data-recent="{{ item.rtime_last_played or '' }}"
+        data-hltb="{{ item.hltb.get('completionist') if item.hltb and item.hltb.get('completionist') is not none else '' }}"
+        data-name-order="{{ item.name_order }}"
+        data-detail-url="/profile/{{ library.steamid }}/games/{{ item.appid }}"
+        {% if selected and selected.appid == item.appid %}aria-current="true"{% endif %}
+        aria-controls="game-modal"
+      >
+        <div class="card-art">
+          <span class="art-fallback" aria-hidden="true">{{ item.name }}</span
+          ><img
+            src="https://cdn.akamai.steamstatic.com/steam/apps/{{ item.appid }}/header.jpg"
+            alt=""
+            loading="lazy"
+            width="460"
+            height="215"
+          /><span class="selection-indicator" aria-hidden="true">✓</span>
+        </div>
+        <div class="card-info">
+          <h3>{{ item.name }}</h3>
+          <div class="card-micro">
+            <span
+              >{{ item.playtime_forever | hours }}{% if item.playtime_forever is
+              not none %} h jogadas{% endif %}</span
+            >{% if item.playtime_forever == 0 %}<span class="unplayed-dot"
+              >Não iniciado</span
+            >{% elif item.playtime_forever is none %}<span
+              >Sem tempo informado</span
+            >{% else %}<span>Já jogado</span>{% endif %}
+          </div>
+          <div class="card-hltb">
+            {% if item.hltb and item.hltb.get('completionist') is not none
+            %}Completionist {{ item.hltb.get('completionist') | round(1) }} h{%
+            elif item.hltb and item.hltb.get('error') %}HLTB indisponível{% else
+            %}HLTB a consultar{% endif %}
+          </div>
+          {% include "card_progress.html" %}
+        </div>
+      </a>
+      {% else %}
+      <div class="empty">
+        {% if library.game_count == 0 %}
+        <h3>Nenhum jogo retornado pela Steam</h3>
+        <p>A biblioteca retornada está vazia.</p>
+        {% else %}
+        <h3>Nenhum jogo com esses filtros</h3>
+        <p><a href="/profile/{{ library.steamid }}">Limpar filtros</a></p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </main>
+</div>
+<div
+  id="game-modal"
+  class="game-modal"
+  data-open-modal="{{ 'true' if open_modal else 'false' }}"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="modal-title"
+  hidden
+>
+  <div class="modal-backdrop" data-close-modal></div>
+  <div class="modal-card">
+    <div
+      id="selection-status"
+      class="selection-status"
+      role="status"
+      aria-live="polite"
+    ></div>
+    <div id="game-detail">{% include "game_detail.html" %}</div>
+  </div>
+</div>
+{% endblock %}

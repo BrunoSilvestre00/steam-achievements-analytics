@@ -1,0 +1,31 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Ruff check
+        entry: .venv/Scripts/python.exe -m ruff check steam_analytics tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: ruff-format
+        name: Ruff format check
+        entry: .venv/Scripts/python.exe -m ruff format --check steam_analytics tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: djlint
+        name: djLint templates
+        entry: .venv/Scripts/python.exe scripts/lint_templates.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: prettier
+        name: Prettier web assets
+        entry: npx.cmd prettier --check "steam_analytics/static/*.js"
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

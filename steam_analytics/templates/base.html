@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      {% block title %}Steam Achievement Analytics · Seu próximo 100%{% endblock
+      %}
+    </title>
+    <meta
+      name="description"
+      content="Explore sua biblioteca Steam e comece a planejar seus próximos jogos para completar."
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      href="{{ url_for('static', path='favicon.png') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='style.css') }}?v=2"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='workspace.css') }}?v=5"
+    />
+    <script
+      src="{{ url_for('static', path='workspace.js') }}?v=9"
+      defer
+    ></script>
+    <script
+      src="{{ url_for('static', path='progress.js') }}?v=5"
+      defer
+    ></script>
+  </head>
+  <body class="{% block body_class %}{% endblock %}">
+    <header class="site-header">
+      <a href="/" class="brand"
+        ><img
+          class="brand-logo"
+          src="{{ url_for('static', path='logo.png') }}"
+          alt=""
+        /><span
+          >steam<span class="brand-light">achievement analytics</span></span
+        ></a
+      ><span class="header-note">UM JOGO DE CADA VEZ.</span>
+    </header>
+    <main>{% block content %}{% endblock %}</main>
+    <footer>
+      <span>Steam Achievement Analytics</span
+      ><span>Seu caminho até o próximo 100%.</span
+      ><span>Projeto independente · Dados da Steam</span>
+    </footer>
+  </body>
+</html>
