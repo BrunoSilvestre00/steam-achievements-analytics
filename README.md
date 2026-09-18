@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="steam_analytics/static/logo.png" alt="Steam Achievement Analytics" width="180">
+  <img src="steam_analytics/static/assets/logo.png" alt="Steam Achievement Analytics" width="180">
   <h1>Steam Achievement Analytics</h1>
   <p>Analise sua biblioteca Steam e planeje o caminho até completar 100% dos jogos.</p>
 </div>

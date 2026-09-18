@@ -14,7 +14,7 @@
     <link
       rel="icon"
       type="image/png"
-      href="{{ url_for('static', path='favicon.png') }}"
+      href="{{ url_for('static', path='assets/favicon.png') }}"
     />
     <link
       rel="stylesheet"
@@ -22,14 +22,14 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='workspace.css') }}?v=5"
+      href="{{ url_for('static', path='workspace.css') }}?v=14"
     />
     <script
-      src="{{ url_for('static', path='workspace.js') }}?v=13"
+      src="{{ url_for('static', path='workspace.js') }}?v=26"
       defer
     ></script>
     <script
-      src="{{ url_for('static', path='progress.js') }}?v=6"
+      src="{{ url_for('static', path='progress.js') }}?v=10"
       defer
     ></script>
   </head>
@@ -38,7 +38,7 @@
       <a href="/" class="brand"
         ><img
           class="brand-logo"
-          src="{{ url_for('static', path='logo.png') }}"
+          src="{{ url_for('static', path='assets/logo.png') }}"
           alt=""
         /><span
           >steam<span class="brand-light">achievement analytics</span>{% if library is defined and library.personaname %}<span class="brand-user"> | {{ library.personaname }}</span>{% endif %}</span
@@ -48,7 +48,7 @@
     <main>{% block content %}{% endblock %}</main>
     <footer class="site-footer">
       <div class="footer-brand">
-        <a href="/" class="footer-logo"><img src="{{ url_for('static', path='logo.png') }}" alt="" /><span>Steam Achievement Analytics</span></a>
+        <a href="/" class="footer-logo"><img src="{{ url_for('static', path='assets/logo.png') }}" alt="" /><span>Steam Achievement Analytics</span></a>
         <span class="footer-credit">© 2026 Bruno Silvestre · <a href="https://github.com/BrunoSilvestre00" target="_blank" rel="noopener noreferrer">GitHub</a> · <a href="https://www.linkedin.com/in/bruno-silvestre/" target="_blank" rel="noopener noreferrer">LinkedIn</a></span>
       </div>
       <div class="footer-column"><span class="footer-label">NAVEGAÇÃO</span><a href="/">Início</a><a href="/">Minha biblioteca</a></div>

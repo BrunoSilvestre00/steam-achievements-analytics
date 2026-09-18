@@ -1,3 +1,4 @@
+import re
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,14 +17,39 @@ from .storage import (
     load_trophy_guide,
     save_achievement_failure,
     save_achievements,
+    save_external_games,
     save_hltb,
     save_hltb_error,
     save_library,
     save_trophy_guide,
     save_trophy_guide_error,
+    update_game_playtime,
     update_personaname,
 )
 from .trophy import fetch_trophy_guide
+
+ONLINE_ACHIEVEMENT_HINTS = re.compile(
+    r"\b(?:online|multiplayer|co-?op|cooperative|pvp|versus|matchmaking|ranked|leaderboard)\b"
+    r"|\b(?:with|against)\s+(?:a\s+)?(?:friend|friends|player|players|opponent)\b",
+    re.IGNORECASE,
+)
+
+
+def mark_online_achievements(data):
+    return {
+        **data,
+        "items": [
+            {
+                **item,
+                "is_online": bool(
+                    ONLINE_ACHIEVEMENT_HINTS.search(
+                        f"{item.get('name', '')} {item.get('description', '')}"
+                    )
+                ),
+            }
+            for item in data.get("items", [])
+        ],
+    }
 
 
 class LibraryService:
@@ -37,7 +63,25 @@ class LibraryService:
         self._achievements = OrderedDict()
         self._progress_lock = Lock()
         self._hltb_lock = RLock()
+        self._refresh_state_lock = Lock()
+        self._refresh_cancelled = set()
         self.hltb_client = None
+
+    def begin_refresh(self, steamid):
+        with self._refresh_state_lock:
+            self._refresh_cancelled.discard(steamid)
+
+    def cancel_refresh(self, steamid):
+        with self._refresh_state_lock:
+            self._refresh_cancelled.add(steamid)
+
+    def finish_refresh(self, steamid):
+        with self._refresh_state_lock:
+            self._refresh_cancelled.discard(steamid)
+
+    def refresh_cancelled(self, steamid):
+        with self._refresh_state_lock:
+            return steamid in self._refresh_cancelled
 
     def hltb(self, appid, title, *, refresh=False):
         cached = load_hltb(self.database, appid)
@@ -69,6 +113,8 @@ class LibraryService:
                 # Mantemos as consultas sequenciais para reduzir a chance de bloqueio,
                 # mas aproveitamos cada clique para preencher um lote útil.
                 for game in missing[:limit]:
+                    if self.refresh_cancelled(steamid):
+                        break
                     self.hltb(game["appid"], game["name"])
             saved = load_hltb_summary(self.database, appids)
         return {
@@ -99,13 +145,20 @@ class LibraryService:
             raise SteamError("Importe a biblioteca antes de consultar os percentuais.", 404)
         if update and self._progress_lock.acquire(blocking=False):
             try:
-                pending = [item for item in load_progress(self.database, steamid) if item["needs_update"]]
+                pending = [
+                    item
+                    for item in load_progress(self.database, steamid)
+                    if item["needs_update"] and item.get("source") != "external"
+                ]
                 for item in pending[:3]:
                     self.achievements(steamid, item["appid"])
             finally:
                 self._progress_lock.release()
         games = load_progress(self.database, steamid)
-        return {"games": games, "pending": sum(item["needs_update"] for item in games)}
+        return {
+            "games": games,
+            "pending": sum(item["needs_update"] and item.get("source") != "external" for item in games),
+        }
 
     def achievements(self, steamid, appid):
         key = (steamid, appid)
@@ -127,9 +180,16 @@ class LibraryService:
             if isinstance(client, SteamClient):
                 try:
                     assets = client.achievement_schema(appid)
-                    result["items"] = [{**item, **assets.get(item["apiname"], {})} for item in result["items"]]
+                    result["items"] = [
+                        {
+                            **item,
+                            **{key: value for key, value in assets.get(item["apiname"], {}).items() if value},
+                        }
+                        for item in result["items"]
+                    ]
                 except SteamError:
                     pass
+            result = mark_online_achievements(result)
             save_achievements(self.database, steamid, appid, result, now.isoformat())
             result = {**result, "imported_at": now.isoformat()}
         except SteamError as error:
@@ -152,8 +212,7 @@ class LibraryService:
         # Serializa consultas para evitar chamadas e gravações concorrentes no uso local.
         with self._lock:
             cached = load_library(self.database, steamid)
-            now = datetime.now(timezone.utc)
-            if cached and not refresh:
+            if cached and not refresh and self.cache_seconds > 0:
                 if not cached.get("personaname") and (self.client is None or isinstance(self.client, SteamClient)):
                     try:
                         profile_client = self.client or SteamClient(self.api_key)
@@ -161,9 +220,9 @@ class LibraryService:
                         update_personaname(self.database, steamid, cached["personaname"])
                     except SteamError:
                         pass
-                age = (now - datetime.fromisoformat(cached["imported_at"])).total_seconds()
-                if age < self.cache_seconds:
-                    return {**cached, "cached": True, "warning": None}
+                # A biblioteca só é atualizada por uma ação explícita do usuário.
+                # A entrada na listagem não deve consultar a Steam novamente.
+                return {**cached, "cached": True, "warning": None}
             try:
                 client = self.client or SteamClient(self.api_key)
                 games = client.owned_games(steamid)
@@ -189,12 +248,56 @@ class LibraryService:
                     for key in list(self._achievements):
                         if key[0] == steamid:
                             del self._achievements[key]
+            saved = load_library(self.database, steamid)
             return {
                 "steamid": steamid,
                 "personaname": personaname or (cached or {}).get("personaname"),
                 "imported_at": imported_at,
-                "game_count": len(games),
-                "games": games,
+                "game_count": saved["game_count"] if saved else len(games),
+                "games": saved["games"] if saved else games,
                 "cached": False,
                 "warning": None,
             }
+
+    def import_perfect_games(self, steamid):
+        if not valid_steamid(steamid):
+            raise SteamError("SteamID inválido.", 422)
+        if load_library(self.database, steamid) is None:
+            raise SteamError("Importe a biblioteca antes de buscar platinas públicas.", 404)
+        client = self.client or SteamClient(self.api_key)
+        perfect = client.perfect_games(steamid)
+        current = load_library(self.database, steamid)
+        known = {game["appid"] for game in current["games"]}
+        missing = [game for game in perfect if game["appid"] not in known]
+        save_external_games(self.database, steamid, missing, "family")
+        return {"found": len(perfect), "added": len(missing), "games": missing}
+
+    def add_external_game(self, steamid, appid):
+        if not valid_steamid(steamid):
+            raise SteamError("SteamID inválido.", 422)
+        if load_library(self.database, steamid) is None:
+            raise SteamError("Importe a biblioteca antes de adicionar um jogo.", 404)
+        if not isinstance(appid, int) or appid <= 0:
+            raise SteamError("Informe um AppID Steam válido.", 422)
+        client = self.client or SteamClient(self.api_key)
+        game = client.store_game(appid)
+        current = load_library(self.database, steamid)
+        exists = any(item["appid"] == appid for item in current["games"])
+        if not exists:
+            save_external_games(self.database, steamid, [game], "external")
+        return {"added": not exists, "game": game}
+
+    def update_playtime(self, steamid, appid):
+        client = self.client or SteamClient(self.api_key)
+        if not isinstance(client, SteamClient):
+            return None
+        result = client.single_game_playtime(steamid, appid)
+        if result.get("playtime_forever") is not None:
+            update_game_playtime(
+                self.database,
+                steamid,
+                appid,
+                result["playtime_forever"],
+                result.get("playtime_2weeks"),
+            )
+        return result

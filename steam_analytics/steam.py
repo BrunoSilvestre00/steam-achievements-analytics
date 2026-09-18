@@ -4,6 +4,8 @@ import json
 import os
 import re
 import time
+from html import unescape
+from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
@@ -15,6 +17,41 @@ class SteamError(Exception):
     def __init__(self, message, status_code=502):
         super().__init__(message)
         self.status_code = status_code
+
+
+class _PerfectGamesParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._row_depth = 0
+        self._anchor = None
+        self.games = {}
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        classes = values.get("class", "")
+        if tag == "div":
+            if "gameListRow" in classes:
+                self._row_depth = 1
+            elif self._row_depth:
+                self._row_depth += 1
+        if tag == "a" and self._row_depth and values.get("href"):
+            match = re.search(r"/app/(\d+)(?:/|[?#]|$)", values["href"])
+            if match:
+                self._anchor = (int(match.group(1)), [])
+
+    def handle_data(self, data):
+        if self._anchor:
+            self._anchor[1].append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._anchor:
+            appid, chunks = self._anchor
+            name = " ".join("".join(chunks).split())
+            if name:
+                self.games[appid] = name
+            self._anchor = None
+        if tag == "div" and self._row_depth:
+            self._row_depth -= 1
 
 
 def valid_steamid(value):
@@ -64,6 +101,27 @@ class SteamClient:
                 raise SteamError("Não foi possível conectar à Steam. Confira a conexão e tente novamente.") from None
             except (ValueError, UnicodeError):
                 raise SteamError("A Steam retornou uma resposta JSON inválida.") from None
+
+    def _get_html(self, url):
+        request = Request(url, headers={"User-Agent": "SteamAnalytics/0.1", "Accept": "text/html"})
+        try:
+            with self._open(request, timeout=30) as response:
+                return response.read().decode("utf-8", "replace")
+        except (HTTPError, URLError, TimeoutError, OSError) as error:
+            if getattr(error, "code", None) in (401, 403):
+                raise SteamError("A página pública da Steam recusou o acesso.") from None
+            raise SteamError("Não foi possível consultar a página pública de jogos perfeitos da Steam.") from None
+
+    def _get_external_json(self, url):
+        request = Request(url, headers={"User-Agent": "SteamAnalytics/0.1", "Accept": "application/json"})
+        try:
+            with self._open(request, timeout=30) as response:
+                payload = json.load(response)
+            if not isinstance(payload, dict):
+                raise ValueError
+            return payload
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError, UnicodeError):
+            raise SteamError("Não foi possível consultar os dados deste AppID na Steam.") from None
 
     def resolve_profile(self, profile):
         value = profile.strip()
@@ -124,6 +182,32 @@ class SteamClient:
             raise SteamError("A Steam retornou jogos duplicados; importação cancelada.")
         return sorted(normalized, key=lambda game: (game["name"].casefold(), game["appid"]))
 
+    def perfect_games(self, steamid):
+        html = self._get_html(f"https://steamcommunity.com/profiles/{steamid}/games/?tab=perfect")
+        parser = _PerfectGamesParser()
+        parser.feed(html)
+        if not parser.games and re.search(r"<title>\s*Sign In\s*</title>|Sign in to Steam", html, re.IGNORECASE):
+            raise SteamError(
+                "A Steam exigiu uma sessão autenticada para consultar os jogos perfeitos. "
+                "Adicione os jogos compartilhados manualmente por AppID."
+            )
+        return sorted(
+            [normalize_game({"appid": appid, "name": unescape(name)}) for appid, name in parser.games.items()],
+            key=lambda game: (game["name"].casefold(), game["appid"]),
+        )
+
+    def store_game(self, appid):
+        appid = int(appid)
+        response = self._get_external_json(
+            f"https://store.steampowered.com/api/appdetails?appids={appid}&l=brazilian"
+        )
+        entry = response.get(str(appid), {})
+        data = entry.get("data") if entry.get("success") else None
+        if not isinstance(data, dict):
+            raise SteamError("A Steam não encontrou um jogo para esse AppID.", 404)
+        name = data.get("name") if isinstance(data, dict) else None
+        return normalize_game({"appid": appid, "name": name or f"App {appid}"})
+
     def profile_summary(self, steamid):
         response = self._get("ISteamUser/GetPlayerSummaries/v2", {"steamids": steamid})
         players = response.get("players")
@@ -134,6 +218,19 @@ class SteamClient:
         if not isinstance(name, str) or not name.strip():
             raise SteamError("A Steam não disponibilizou o nome deste perfil.")
         return {"steamid": steamid, "personaname": name.strip()}
+
+    def single_game_playtime(self, steamid, appid):
+        response = self._get(
+            "IPlayerService/GetSingleGamePlaytime/v1",
+            {"steamid": steamid, "appid": int(appid)},
+        )
+        result = {}
+        for field in ("playtime_forever", "playtime_2weeks"):
+            value = response.get(field)
+            if value is not None and (type(value) is not int or value < 0):
+                raise SteamError("A Steam retornou um tempo de jogo inválido.")
+            result[field] = value
+        return result
 
     def player_achievements(self, steamid, appid):
         stats = self._get(
@@ -196,7 +293,11 @@ class SteamClient:
         for item in achievements:
             if not isinstance(item, dict) or not isinstance(item.get("name"), str):
                 continue
+            hidden = item.get("hidden", 0)
             result[item["name"]] = {
+                "name": item.get("displayName") if isinstance(item.get("displayName"), str) else None,
+                "description": item.get("description") if isinstance(item.get("description"), str) else None,
+                "is_hidden": hidden is True or hidden == 1 or str(hidden).lower() in {"1", "true"},
                 "icon": item.get("icon") if isinstance(item.get("icon"), str) else None,
                 "icon_gray": item.get("icongray") if isinstance(item.get("icongray"), str) else None,
             }

@@ -1,5 +1,5 @@
 {% if selected %}
-<article class="game-detail-content" data-selected-game="{{ selected.appid }}">
+<article class="game-detail-content{% if achievements and achievements.complete %} is-complete{% endif %}" data-selected-game="{{ selected.appid }}" data-hltb-completionist="{{ hltb.completionist if hltb and hltb.completionist is not none else '' }}" data-hltb-error="{{ 'true' if hltb and hltb.error else 'false' }}">
   <div class="detail-art">
     <span class="art-fallback" aria-hidden="true">{{ selected.name }}</span
     ><img
@@ -7,13 +7,19 @@
       alt="Capa de {{ selected.name }}"
       width="460"
       height="215"
-    /><span class="detail-art-label">SEU PRÓXIMO 100%</span>
+    />{% if achievements and achievements.complete %}<img
+      class="detail-completion-badge"
+      src="{{ url_for('static', path='assets/100-badge.png') }}"
+      alt="100% concluído"
+      width="112"
+      height="112"
+    />{% endif %}<span class="detail-art-label">{% if achievements and achievements.complete %}PLATINA CONCLUÍDA{% else %}SEU PRÓXIMO 100%{% endif %}</span>
   </div>
   <div class="detail-body">
     <div class="detail-kicker">
-      <span class="eyebrow">EM SUA BIBLIOTECA</span
+      <span class="eyebrow">{% if selected.source == 'family' %}<b class="game-source-tag family">FAMÍLIA</b>{% elif selected.source == 'external' %}<b class="game-source-tag external">EXTERNO</b>{% else %}EM SUA BIBLIOTECA{% endif %}</span
       ><span
-        ><a
+        >{% if achievements and achievements.complete %}<b class="detail-complete-badge">✓ 100% CONCLUÍDO</b> · {% endif %}<a
           href="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace"
           class="detail-workspace-link"
           >Área do jogo ↗</a
@@ -27,6 +33,15 @@
         ></span
       >
     </div>
+    {% if achievements and achievements.complete %}
+    <div class="platinum-celebration" role="status">
+      <span class="platinum-celebration-mark">★</span>
+      <div>
+        <strong>100% CONCLUÍDO</strong>
+        <small>Você desbloqueou todas as conquistas deste jogo.</small>
+      </div>
+    </div>
+    {% endif %}
     <h2>{{ selected.name }}</h2>
     <div class="detail-playtime">
       <span
@@ -38,13 +53,13 @@
     <section class="completion-section" aria-labelledby="completion-title">
       <div class="detail-section-heading">
         <h3 id="completion-title">Caminho até o 100%</h3>
-        <span class="source-badge">STEAM</span>
+        <span class="source-badge">{% if selected.source == 'family' %}STEAM · FAMÍLIA{% elif selected.source == 'external' %}STEAM · EXTERNO{% else %}STEAM{% endif %}</span>
       </div>
       {% if achievements.available and achievements.error %}
       <p class="detail-note" role="status">{{ achievements.error }}</p>
       {% endif %} {% if achievements.available and achievements.total > 0 %}
       <div class="progress-heading">
-        <strong>{{ achievements.percent }}<span>%</span></strong>
+        <strong class="completion-percent{% if achievements.complete %} is-complete{% endif %}">{% if achievements.percent == 0 or achievements.percent == 100 %}{{ achievements.percent | round(0) | int }}{% else %}{{ achievements.percent }}{% endif %}<span>%</span></strong>
         <p>
           {{ achievements.unlocked }} de {{ achievements.total }} conquistas
         </p>
@@ -184,13 +199,20 @@
     <section class="achievement-section">
       <div class="detail-section-heading">
         <h3>Conquistas</h3>
-        <span class="muted"
-          >{{ achievements.unlocked }}/{{ achievements.total }}</span
-        >
+        <div class="achievement-controls">
+          <label class="sr-only" for="achievement-filter">Filtrar conquistas</label>
+          <select id="achievement-filter" data-achievement-filter>
+            <option value="all">Todas</option>
+            <option value="unlocked">Completadas</option>
+            <option value="online">Online</option>
+            <option value="locked">Não completadas</option>
+          </select>
+          <span class="muted">{{ achievements.unlocked }}/{{ achievements.total }}</span>
+        </div>
       </div>
       <div class="achievement-list">
         {% for achievement in achievements['items'] | sort(attribute='unlocked', reverse=true) %}
-        <div class="achievement-row">
+        <div class="achievement-row" data-achievement-row data-unlocked="{{ 'true' if achievement.unlocked else 'false' }}" data-online="{{ 'true' if achievement.is_online else 'false' }}">
           {% if achievement.icon or achievement.icon_gray %}<img
             class="achievement-icon"
             src="{{ achievement.icon if achievement.unlocked or not achievement.icon_gray else achievement.icon_gray }}"
@@ -205,10 +227,10 @@
             >{% if achievement.unlocked %}✓{% else %}○{% endif %}</span
           >
           <div>
-            <strong>{{ achievement.name }}</strong>{% if achievement.description
+            <strong>{{ achievement.name }}</strong>{% if achievement.is_online %}<span class="online-badge">ONLINE</span>{% endif %}{% if achievement.is_hidden %}<button class="achievement-reveal" type="button" data-achievement-reveal>clique para revelar esta conquista</button><p class="achievement-description" data-hidden-description hidden>{{ achievement.description or 'A Steam não disponibilizou a descrição desta conquista.' }}</p>{% elif achievement.description
             %}
             <p>{{ achievement.description }}</p>
-            {% endif %}<small
+            {% endif %}<small class="achievement-state"
               >{% if achievement.unlocked %}Desbloqueada{% else %}Pendente{%
               endif %}</small
             >

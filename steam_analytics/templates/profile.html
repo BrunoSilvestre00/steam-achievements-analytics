@@ -20,16 +20,19 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
     >
       <label class="sr-only" for="refresh-mode">Tipo de atualização</label>
       <select id="refresh-mode" name="mode" aria-label="Tipo de atualização">
-        <option value="all">↻ Atualizar tudo</option>
+        <option value="all">Atualizar tudo</option>
         <option value="steam">Atualizar só Steam</option>
         <option value="hltb">Atualizar só HLTB</option>
+        <option value="perfect" disabled class="deprecated-option">Atualizar só platinas públicas (indisponível)</option>
       </select>
+      <button type="button" id="refresh-submit" class="refresh-submit" aria-label="Executar atualização" title="Executar atualização">↻</button>
     </form>
   </div>
 </div>
 {% if library.warning %}
 <div class="notice" role="status">{{ library.warning }}</div>
 {% endif %}
+{% if notice %}<div class="notice external-notice" role="status">{{ notice }}</div>{% endif %}
 <div id="library-layout">
   <aside class="filter-sidebar" aria-label="Filtros da biblioteca">
     <div class="sidebar-heading">
@@ -41,8 +44,16 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       <summary>Trocar perfil</summary>
       {% include "profile_form.html" %}
     </details>
+    <section class="external-tools" aria-label="Adicionar jogos">
+      <span class="eyebrow">ADICIONE UM JOGO EXTERNO</span>
+      <form action="/profile/{{ library.steamid }}/games/add" method="post" class="external-add-form">
+        <label for="appid-or-url">Adicionar por AppID ou URL</label>
+        <div class="external-add-row"><input id="appid-or-url" name="appid_or_url" placeholder="Ex.: 1245620" required><button class="sidebar-action" type="submit">Adicionar</button></div>
+        <p>Útil para consultar HLTB e planejar jogos fora da biblioteca oficial.</p>
+      </form>
+    </section>
     <form method="get" class="card-filters" action="/profile/{{ library.steamid }}">
-      {% if selected %}<input type="hidden" name="game" value="{{ selected.appid }}">{% endif %}
+      {% if open_modal %}<input type="hidden" name="game" value="{{ selected.appid }}">{% endif %}
       <label for="q">Buscar jogo</label>
       <input id="q" name="q" placeholder="Nome do jogo…" value="{{ q }}" maxlength="200">
       <label for="played">Status</label>
@@ -107,10 +118,10 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       {% endif %}
     </section>
     <section
-      class="progress-sync{% if not progress_pending or updated == 'hltb' %} is-hidden{% endif %}"
+      class="progress-sync{% if not progress_pending or not sync_now or updated in ('hltb', 'perfect') %} is-hidden{% endif %}"
       data-progress-sync
       aria-live="polite"
-      {% if not progress_pending or updated == 'hltb' %}hidden{% endif %}
+      {% if not progress_pending or not sync_now or updated in ('hltb', 'perfect') %}hidden{% endif %}
     >
       <div class="progress-sync-icon" aria-hidden="true"><span></span></div>
       <div class="progress-sync-copy">
@@ -118,6 +129,7 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
         <span data-progress-label>
           {% if progress_pending %}Preparando consulta de {{ library.game_count }} jogos…{% else %}Tudo atualizado{% endif %}
         </span>
+        <button type="button" id="refresh-cancel" class="progress-cancel" aria-label="Cancelar atualização" hidden>Cancelar atualização</button>
       </div>
       <progress data-progress-sync-bar max="{{ library.game_count or 1 }}" value="{{ (library.game_count or 1) - progress_pending }}"></progress>
     </section>
@@ -136,7 +148,8 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       data-sort="{{ sort }}"
       data-progress-url="/api/profile/{{ library.steamid }}/progress"
       data-pending="{{ progress_pending }}"
-      data-skip-progress="{{ 'true' if updated == 'hltb' else 'false' }}"
+      data-skip-progress="{{ 'true' if updated in ('hltb', 'perfect') else 'false' }}"
+      data-sync-now="{{ 'true' if sync_now else 'false' }}"
     >
       {% for item in games %}
       <a
@@ -161,10 +174,17 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
             loading="lazy"
             width="460"
             height="215"
-          /><span class="selection-indicator" aria-hidden="true">✓</span>
+          />{% if item.progress.percent == 100 %}<img
+            class="card-completion-badge"
+            src="{{ url_for('static', path='assets/100-steam-badge.png') }}"
+            alt="100% concluído"
+            width="64"
+            height="64"
+          />{% endif %}<span class="selection-indicator" aria-hidden="true">✓</span>
         </div>
         <div class="card-info">
           <h3>{{ item.name }}</h3>
+          {% if item.source == 'family' %}<span class="game-source-tag family">FAMÍLIA</span>{% elif item.source == 'external' %}<span class="game-source-tag external">EXTERNO</span>{% endif %}
           <div class="card-micro">
             <span
               >{{ item.playtime_forever | hours }}{% if item.playtime_forever is

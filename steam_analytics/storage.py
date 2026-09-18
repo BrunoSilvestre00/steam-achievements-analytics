@@ -19,7 +19,7 @@ def connect(path):
     db.execute("PRAGMA foreign_keys = ON")
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 7:
+        if version > 12:
             raise sqlite3.DatabaseError("Versão do banco não suportada")
         if version == 0:
             with db:
@@ -35,7 +35,7 @@ def connect(path):
                 if legacy:
                     db.execute("INSERT OR REPLACE INTO games SELECT appid, name FROM legacy_owned_games")
                     db.execute("""INSERT INTO library_games
-                        SELECT steamid, appid, playtime_forever, playtime_2weeks, rtime_last_played
+                        SELECT steamid, appid, playtime_forever, playtime_2weeks, rtime_last_played, 'steam'
                         FROM legacy_owned_games""")
                     db.execute("DROP TABLE legacy_owned_games")
                 db.execute("PRAGMA user_version = 1")
@@ -96,6 +96,36 @@ def connect(path):
                 if "icon_gray" not in columns:
                     db.execute("ALTER TABLE achievement_definitions ADD COLUMN icon_gray TEXT")
                 db.execute("PRAGMA user_version = 7")
+        if version < 8:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(achievement_definitions)")}
+                if "is_online" not in columns:
+                    db.execute("ALTER TABLE achievement_definitions ADD COLUMN is_online INTEGER NOT NULL DEFAULT 0")
+                db.execute("PRAGMA user_version = 8")
+        if version < 9:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(achievement_definitions)")}
+                if "is_hidden" not in columns:
+                    db.execute("ALTER TABLE achievement_definitions ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+                db.execute("PRAGMA user_version = 9")
+        if version < 10:
+            with db:
+                # Corrige registros criados quando o campo hidden vinha como texto
+                # e era interpretado incorretamente como True.
+                db.execute("UPDATE achievement_definitions SET is_hidden=0 WHERE is_hidden=1 AND COALESCE(description, '') = ''")
+                db.execute("PRAGMA user_version = 10")
+        if version < 11:
+            with db:
+                db.execute("UPDATE achievement_sync SET refresh_required=1")
+                db.execute("PRAGMA user_version = 11")
+                version = 11
+        if version < 12:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(library_games)")}
+                if "source" not in columns:
+                    db.execute("ALTER TABLE library_games ADD COLUMN source TEXT NOT NULL DEFAULT 'steam'")
+                db.execute("PRAGMA user_version = 12")
+                version = 12
         yield db
     finally:
         db.close()
@@ -110,9 +140,9 @@ def load_library(path, steamid):
         if library is None:
             return None
         games = [
-            normalize_game(dict(row))
+            {**normalize_game(dict(row)), "source": row["source"] or "steam"}
             for row in db.execute(
-                """SELECT g.appid, g.name, lg.playtime_forever, lg.playtime_2weeks, lg.rtime_last_played
+                """SELECT g.appid, g.name, lg.playtime_forever, lg.playtime_2weeks, lg.rtime_last_played, lg.source
                FROM library_games lg JOIN games g ON g.appid = lg.appid
                WHERE lg.steamid = ? ORDER BY g.name COLLATE NOCASE, g.appid""",
                 (steamid,),
@@ -134,10 +164,43 @@ def save_library(path, steamid, games, imported_at, personaname=None):
             ON CONFLICT(appid) DO UPDATE SET name=excluded.name""",
             [(g["appid"], g["name"]) for g in games],
         )
-        db.execute("DELETE FROM library_games WHERE steamid = ?", (steamid,))
+        db.execute("DELETE FROM library_games WHERE steamid = ? AND source = 'steam'", (steamid,))
+        appids = [g["appid"] for g in games]
+        if appids:
+            marks = ",".join("?" for _ in appids)
+            db.execute(
+                f"DELETE FROM library_games WHERE steamid = ? AND source <> 'steam' AND appid IN ({marks})",
+                (steamid, *appids),
+            )
         db.executemany(
-            "INSERT INTO library_games VALUES (?, ?, ?, ?, ?)",
+            """INSERT INTO library_games
+                (steamid, appid, playtime_forever, playtime_2weeks, rtime_last_played, source)
+                VALUES (?, ?, ?, ?, ?, 'steam')
+                """,
             [(steamid, g["appid"], g["playtime_forever"], g["playtime_2weeks"], g["rtime_last_played"]) for g in games],
+        )
+        total = db.execute("SELECT count(*) FROM library_games WHERE steamid = ?", (steamid,)).fetchone()[0]
+        db.execute("UPDATE libraries SET game_count = ? WHERE steamid = ?", (total, steamid))
+
+
+def save_external_games(path, steamid, games, source):
+    """Adiciona jogos externos sem apagar os jogos oficiais do perfil."""
+    now = datetime.now(timezone.utc).isoformat()
+    with connect(path) as db, db:
+        db.executemany(
+            "INSERT INTO games (appid, name) VALUES (?, ?) ON CONFLICT(appid) DO UPDATE SET name=excluded.name",
+            [(game["appid"], game["name"]) for game in games],
+        )
+        db.executemany(
+            """INSERT INTO library_games
+                (steamid, appid, playtime_forever, playtime_2weeks, rtime_last_played, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(steamid, appid) DO UPDATE SET source=excluded.source""",
+            [(steamid, game["appid"], game.get("playtime_forever"), game.get("playtime_2weeks"), game.get("rtime_last_played"), source) for game in games],
+        )
+        db.execute(
+            "UPDATE libraries SET game_count=(SELECT count(*) FROM library_games WHERE steamid=?), imported_at=? WHERE steamid=?",
+            (steamid, now, steamid),
         )
 
 
@@ -146,16 +209,25 @@ def update_personaname(path, steamid, personaname):
         db.execute("UPDATE libraries SET personaname=? WHERE steamid=?", (personaname, steamid))
 
 
+def update_game_playtime(path, steamid, appid, playtime_forever, playtime_2weeks=None):
+    with connect(path) as db, db:
+        db.execute(
+            "UPDATE library_games SET playtime_forever=?, playtime_2weeks=? WHERE steamid=? AND appid=?",
+            (playtime_forever, playtime_2weeks, steamid, appid),
+        )
+
+
 def save_achievements(path, steamid, appid, result, imported_at):
     with connect(path) as db, db:
         db.executemany(
-            """INSERT INTO achievement_definitions (appid, apiname, name, description, icon, icon_gray)
-            VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO achievement_definitions (appid, apiname, name, description, icon, icon_gray, is_online, is_hidden)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(appid, apiname) DO UPDATE SET name=excluded.name, description=excluded.description,
             icon=COALESCE(excluded.icon, achievement_definitions.icon),
-            icon_gray=COALESCE(excluded.icon_gray, achievement_definitions.icon_gray)""",
+            icon_gray=COALESCE(excluded.icon_gray, achievement_definitions.icon_gray),
+            is_online=excluded.is_online, is_hidden=excluded.is_hidden""",
             [
-                (appid, item["apiname"], item["name"], item["description"], item.get("icon"), item.get("icon_gray"))
+                (appid, item["apiname"], item["name"], item["description"], item.get("icon"), item.get("icon_gray"), int(item.get("is_online", False)), int(item.get("is_hidden", False)))
                 for item in result["items"]
             ],
         )
@@ -194,7 +266,7 @@ def load_progress(path, steamid):
     with connect(path) as db:
         rows = db.execute(
             """
-            SELECT lg.appid, s.imported_at, s.refresh_required, a.checked_at, a.error,
+            SELECT lg.appid, lg.source, s.imported_at, s.refresh_required, a.checked_at, a.error,
                    count(p.apiname) AS total, coalesce(sum(p.unlocked), 0) AS unlocked
             FROM library_games lg
             LEFT JOIN achievement_sync s ON s.steamid=lg.steamid AND s.appid=lg.appid
@@ -215,6 +287,7 @@ def load_progress(path, steamid):
         result.append(
             {
                 "appid": row["appid"],
+                "source": row["source"] or "steam",
                 "percent": percent,
                 "total": total,
                 "unlocked": row["unlocked"] if known else None,
@@ -237,10 +310,10 @@ def load_achievements(path, steamid, appid):
         if not sync:
             return None
         items = [
-            {**dict(row), "unlocked": bool(row["unlocked"])}
+            {**dict(row), "unlocked": bool(row["unlocked"]), "is_online": bool(row["is_online"]), "is_hidden": bool(row["is_hidden"])}
             for row in db.execute(
                 """
-            SELECT d.apiname, d.name, d.description, d.icon, d.icon_gray, p.unlocked
+            SELECT d.apiname, d.name, d.description, d.icon, d.icon_gray, d.is_online, d.is_hidden, p.unlocked
             FROM player_achievements p JOIN achievement_definitions d
               ON d.appid = p.appid AND d.apiname = p.apiname
             WHERE p.steamid = ? AND p.appid = ? ORDER BY d.apiname""",
@@ -437,6 +510,7 @@ def export_library(directory, steamid, games, imported_at):
             "playtime_hours",
             "playtime_2weeks",
             "rtime_last_played",
+            "source",
             "store_url",
         ]
         writer = csv.DictWriter(handle, fieldnames=fields)

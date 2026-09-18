@@ -23,6 +23,17 @@
     const total = data.games.length;
     const pending = data.pending;
     const completed = Math.max(0, total - pending);
+    const syncing = grid.dataset.syncNow === "true";
+    if (!syncing) {
+      sync.hidden = true;
+      sync.classList.add("is-hidden");
+      return;
+    }
+    if (!pending) {
+      sync.hidden = true;
+      sync.classList.add("is-hidden", "is-done");
+      return;
+    }
     sync.hidden = false;
     sync.classList.toggle("is-done", pending === 0);
     sync.classList.toggle("is-hidden", false);
@@ -33,10 +44,14 @@
     }
     if (syncTitle) {
       syncTitle.textContent = pending
-        ? "Atualizando sua biblioteca"
-        : "Biblioteca atualizada";
+        ? syncing
+          ? "Atualizando conquistas"
+          : "Conquistas pendentes"
+        : "Conquistas atualizadas";
     }
-    if (syncLabel) {
+    if (syncLabel && pending && !syncing) {
+      syncLabel.textContent = `${pending} jogos aguardando atualização manual`;
+    } else if (syncLabel) {
       syncLabel.textContent = pending
         ? `${completed} de ${total} jogos processados · buscando conquistas…`
         : `${total} jogos processados · seus percentuais estão em dia`;
@@ -152,6 +167,6 @@
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) location.reload();
   });
-  if (grid.dataset.skipProgress !== "true" && Number(grid.dataset.pending) > 0)
-    update();
+  if (grid.dataset.skipProgress !== "true")
+    update(grid.dataset.syncNow === "true" ? "POST" : "GET");
 })();

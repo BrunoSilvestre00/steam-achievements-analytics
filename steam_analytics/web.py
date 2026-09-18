@@ -1,11 +1,13 @@
 """Frontend renderizado em Python e API JSON para consultas futuras."""
 
 import os
+import re
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -131,6 +133,8 @@ def create_app(*, service=None):
         played: Literal["all", "played", "unplayed", "platinum", "not_platinum", "near_platinum"] = "all",
         game: int | None = Query(default=None, gt=0),
         updated: str = Query(default="", max_length=20),
+        notice: str = Query(default="", max_length=240),
+        sync: bool = Query(default=False),
     ):
         library = app.state.library.get_library(steamid)
         all_games = library["games"]
@@ -195,7 +199,17 @@ def create_app(*, service=None):
                 year = datetime.fromtimestamp(platinum["rtime_last_played"]).year
                 platinum_years[year] = platinum_years.get(year, 0) + 1
         selected = next((g for g in all_games if g["appid"] == game), games[0] if games else None)
+        if selected and selected.get("source") == "external" and selected.get("playtime_forever") is None:
+            try:
+                playtime = app.state.library.update_playtime(steamid, selected["appid"])
+                if playtime and playtime.get("playtime_forever") is not None:
+                    selected.update(playtime)
+                    selected["playtime_hours"] = round(playtime["playtime_forever"] / 60, 2)
+            except SteamError:
+                pass
         achievements = app.state.library.achievements(steamid, selected["appid"]) if selected else None
+        if selected:
+            app.state.cache.invalidate(f"progress:{steamid}")
         hltb = app.state.library.hltb(selected["appid"], selected["name"]) if selected else None
         trophy_guide = load_trophy_guide(app.state.library.database, selected["appid"]) if selected else None
         if selected is not None:
@@ -221,6 +235,8 @@ def create_app(*, service=None):
                 "trophy_guide": trophy_guide,
                 "progress_pending": sum(item["needs_update"] for item in progress.values()),
                 "updated": updated,
+                "notice": notice,
+                "sync_now": sync,
                 "hltb_pending": len([item for item in all_games if item["hltb"] is None]),
                 "total_minutes": sum(known),
                 "played_count": sum(v > 0 for v in known),
@@ -238,13 +254,23 @@ def create_app(*, service=None):
         selected = next((game for game in library["games"] if game["appid"] == appid), None)
         if selected is None:
             raise SteamError("Esse jogo não está na biblioteca importada.", 404)
+        if selected.get("source") == "external" and selected.get("playtime_forever") is None:
+            try:
+                playtime = app.state.library.update_playtime(steamid, appid)
+                if playtime and playtime.get("playtime_forever") is not None:
+                    selected.update(playtime)
+                    selected["playtime_hours"] = round(playtime["playtime_forever"] / 60, 2)
+            except SteamError:
+                pass
+        achievements = app.state.library.achievements(steamid, appid)
+        app.state.cache.invalidate(f"progress:{steamid}")
         return render(
             request,
             "game_detail.html",
             {
                 "selected": selected,
                 "library": library,
-                "achievements": app.state.library.achievements(steamid, appid),
+                "achievements": achievements,
                 "hltb": app.state.library.hltb(appid, selected["name"]),
                 "trophy_guide": load_trophy_guide(app.state.library.database, appid),
             },
@@ -301,18 +327,72 @@ def create_app(*, service=None):
     def refresh_profile(
         request: Request,
         steamid: str,
-        mode: Literal["all", "steam", "hltb"] = Form("all"),
+        mode: Literal["all", "steam", "hltb", "perfect"] = Form("all"),
     ):
+        app.state.library.begin_refresh(steamid)
+        perfect_notice = ""
         if mode in ("all", "steam"):
             library = app.state.library.get_library(steamid, refresh=True)
             if library["warning"]:
+                app.state.library.finish_refresh(steamid)
                 return render(request, "error.html", {"error": library["warning"], "steamid": steamid}, 502)
+            try:
+                imported = app.state.library.import_perfect_games(steamid)
+                if imported["added"]:
+                    perfect_notice = f"{imported['added']} platinas encontradas fora da biblioteca oficial."
+            except Exception:
+                # A página pública pode estar indisponível; isso não deve invalidar a atualização oficial.
+                perfect_notice = ""
+        elif mode == "perfect":
+            try:
+                imported = app.state.library.import_perfect_games(steamid)
+                if imported["added"]:
+                    perfect_notice = f"{imported['added']} platinas encontradas fora da biblioteca oficial."
+                else:
+                    perfect_notice = "Nenhuma platina nova foi encontrada na aba pública da Steam."
+            except Exception as error:
+                perfect_notice = f"Não foi possível consultar as platinas públicas: {error}"
         if mode == "all":
             app.state.library.hltb_progress(steamid, update=True, limit=5)
         elif mode == "hltb":
             app.state.library.hltb_progress(steamid, update=True, limit=20)
         app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
-        return RedirectResponse(f"/profile/{steamid}", status_code=303)
+        target = f"/profile/{steamid}"
+        params = []
+        if mode in ("all", "steam"):
+            params.extend(["updated=steam", "sync=1"])
+        elif mode == "perfect":
+            params.append("updated=perfect")
+        if perfect_notice:
+            params.append(f"notice={quote(perfect_notice)}")
+        if params:
+            target += "?" + "&".join(params)
+        app.state.library.finish_refresh(steamid)
+        return RedirectResponse(target, status_code=303)
+
+    @app.post("/api/profile/{steamid}/cancel-refresh")
+    def cancel_refresh(steamid: str):
+        app.state.library.cancel_refresh(steamid)
+        return {"ok": True}
+
+    @app.post("/profile/{steamid}/import-perfect", response_class=HTMLResponse)
+    def import_perfect_games(request: Request, steamid: str):
+        result = app.state.library.import_perfect_games(steamid)
+        app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
+        return RedirectResponse(
+            f"/profile/{steamid}?notice={quote(str(result['added']) + ' jogos de platina importados da aba pública da Steam')}",
+            status_code=303,
+        )
+
+    @app.post("/profile/{steamid}/games/add", response_class=HTMLResponse)
+    def add_external_game(request: Request, steamid: str, appid_or_url: str = Form(...)):
+        match = re.search(r"(?:/app/)?(\d{1,12})(?:/|$|[?#])", appid_or_url.strip())
+        if not match:
+            raise SteamError("Informe um AppID ou uma URL de jogo Steam válida.", 422)
+        result = app.state.library.add_external_game(steamid, int(match.group(1)))
+        app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
+        message = f"{result['game']['name']} {'adicionado' if result['added'] else 'já está'} na sua lista"
+        return RedirectResponse(f"/profile/{steamid}?notice={quote(message)}", status_code=303)
 
     @app.get("/api/profile/{steamid}")
     def profile_api(steamid: str):

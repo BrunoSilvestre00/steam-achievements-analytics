@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS library_games (
     playtime_forever INTEGER,
     playtime_2weeks INTEGER,
     rtime_last_played INTEGER,
+    source TEXT NOT NULL DEFAULT 'steam',
     PRIMARY KEY (steamid, appid)
 );
 
@@ -26,6 +27,8 @@ CREATE TABLE IF NOT EXISTS achievement_definitions (
     description TEXT NOT NULL DEFAULT '',
     icon TEXT,
     icon_gray TEXT,
+    is_online INTEGER NOT NULL DEFAULT 0,
+    is_hidden INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (appid, apiname)
 );
 
