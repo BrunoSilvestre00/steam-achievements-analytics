@@ -1,8 +1,13 @@
 """Frontend renderizado em Python e API JSON para consultas futuras."""
 
+import base64
+import difflib
+import json
 import os
 import re
 import sqlite3
+import unicodedata
+import zlib
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +15,7 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,6 +33,7 @@ from .storage import (
     load_hltb_summary,
     load_progress,
     load_trophy_guide,
+    load_trophy_guide_summary,
     toggle_checklist_item,
 )
 
@@ -51,6 +58,36 @@ def sort_by_progress(games, direction):
     )
 
 
+def _match_key(value):
+    normalized = unicodedata.normalize("NFKD", value or "")
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", " ", normalized.casefold()).strip()
+
+
+def pair_trophy_guide(guide, achievements):
+    trophies = (guide or {}).get("trophies") or []
+    steam_items = (achievements or {}).get("items") or []
+    remaining = {index: item for index, item in enumerate(steam_items)}
+    paired = []
+    unpaired_guide = []
+    for trophy in trophies:
+        trophy_key = _match_key(trophy.get("name_pt") or trophy.get("name"))
+        best_index = None
+        best_score = 0.0
+        for index, achievement in remaining.items():
+            achievement_key = _match_key(achievement.get("name"))
+            score = difflib.SequenceMatcher(None, trophy_key, achievement_key).ratio()
+            if trophy_key and (trophy_key in achievement_key or achievement_key in trophy_key):
+                score = max(score, 0.92)
+            if score > best_score:
+                best_index, best_score = index, score
+        if best_index is not None and best_score >= 0.72:
+            paired.append({"trophy": trophy, "achievement": remaining.pop(best_index), "score": round(best_score, 2)})
+        else:
+            unpaired_guide.append(trophy)
+    return {"paired": paired, "unpaired_guide": unpaired_guide, "unpaired_achievements": list(remaining.values())}
+
+
 def create_app(*, service=None):
     load_env()
 
@@ -66,6 +103,12 @@ def create_app(*, service=None):
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["https://steamcommunity.com", "https://www.steamcommunity.com"],
+        allow_methods=["POST"],
+        allow_headers=["Content-Type"],
     )
     app.state.library = service or LibraryService(os.environ.get("STEAM_API_KEY", ""), ROOT / "data" / "steam.sqlite3")
     app.state.cache = RedisCache(ttl=300)
@@ -113,6 +156,15 @@ def create_app(*, service=None):
     def home(request: Request):
         return render(request, "home.html", {"profile_input": os.environ.get("STEAM_PROFILE", "")})
 
+    @app.get("/profile/{steamid}/collect", response_class=HTMLResponse, include_in_schema=False)
+    def collect_page(
+        request: Request,
+        steamid: str,
+        kind: Literal["steam", "trophy"] = "steam",
+        game: int | None = Query(default=None, gt=0),
+    ):
+        return render(request, "collector.html", {"steamid": steamid, "kind": kind, "appid": game})
+
     @app.get("/profile", include_in_schema=False)
     def open_profile(profile: str = Query(min_length=1, max_length=250)):
         value = profile.strip()
@@ -128,14 +180,36 @@ def create_app(*, service=None):
         steamid: str,
         q: str = Query(default="", max_length=200),
         sort: Literal[
-            "name", "hours", "recent", "percent_desc", "percent_asc", "hltb_desc", "hltb_asc"
+            "name", "hours", "recent", "percent_desc", "percent_asc", "hltb_desc", "hltb_asc",
+            "guide_difficulty_desc", "guide_difficulty_asc", "guide_hours_desc", "guide_hours_asc"
         ] = "percent_desc",
         played: Literal["all", "played", "unplayed", "platinum", "not_platinum", "near_platinum"] = "all",
         game: int | None = Query(default=None, gt=0),
         updated: str = Query(default="", max_length=20),
         notice: str = Query(default="", max_length=240),
         sync: bool = Query(default=False),
+        steam_import: str = Query(default="", max_length=500000),
+        trophy_guide_import: str = Query(default="", max_length=500000),
     ):
+        steam_import_payload = ""
+        if steam_import:
+            try:
+                padding = "=" * (-len(steam_import) % 4)
+                steam_import_payload = base64.urlsafe_b64decode(steam_import + padding).decode("utf-8")
+                parsed_import = json.loads(steam_import_payload)
+                if not isinstance(parsed_import, dict) or not isinstance(parsed_import.get("games"), list):
+                    steam_import_payload = ""
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                steam_import_payload = ""
+        trophy_guide_import_payload = ""
+        if trophy_guide_import:
+            try:
+                padding = "=" * (-len(trophy_guide_import) % 4)
+                decoded = base64.urlsafe_b64decode(trophy_guide_import + padding).decode("utf-8")
+                if json.loads(decoded).get("url") and json.loads(decoded).get("html_b64"):
+                    trophy_guide_import_payload = decoded
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                trophy_guide_import_payload = ""
         library = app.state.library.get_library(steamid)
         all_games = library["games"]
         if sort in ("hltb_desc", "hltb_asc"):
@@ -144,9 +218,11 @@ def create_app(*, service=None):
             app.state.library.hltb_progress(steamid, update=True)
         progress = {item["appid"]: item for item in load_progress(app.state.library.database, steamid)}
         hltb_summary = load_hltb_summary(app.state.library.database, [item["appid"] for item in all_games])
+        trophy_summary = load_trophy_guide_summary(app.state.library.database, [item["appid"] for item in all_games])
         for rank, item in enumerate(sorted(all_games, key=lambda g: (g["name"].casefold(), g["appid"]))):
             item["progress"] = progress[item["appid"]]
             item["hltb"] = hltb_summary.get(item["appid"])
+            item["trophy_guide"] = trophy_summary.get(item["appid"])
             item["name_order"] = rank
         # A busca por nome acontece no navegador para evitar recarregar a página
         # e manter toda a biblioteca disponível para o filtro instantâneo.
@@ -172,6 +248,19 @@ def create_app(*, service=None):
                     -((g["hltb"] or {}).get("completionist") or 0)
                     if reverse
                     else ((g["hltb"] or {}).get("completionist") or 0),
+                    g["name"].casefold(),
+                ),
+            )
+        elif sort in ("guide_difficulty_desc", "guide_difficulty_asc", "guide_hours_desc", "guide_hours_asc"):
+            guide_field = "difficulty" if "difficulty" in sort else "hours"
+            reverse = sort.endswith("_desc")
+            games = sorted(
+                games,
+                key=lambda g: (
+                    (g.get("trophy_guide") or {}).get(guide_field) is None,
+                    -((g.get("trophy_guide") or {}).get(guide_field) or 0)
+                    if reverse
+                    else ((g.get("trophy_guide") or {}).get(guide_field) or 0),
                     g["name"].casefold(),
                 ),
             )
@@ -236,6 +325,8 @@ def create_app(*, service=None):
                 "progress_pending": sum(item["needs_update"] for item in progress.values()),
                 "updated": updated,
                 "notice": notice,
+                "steam_import_payload": steam_import_payload,
+                "trophy_guide_import_payload": trophy_guide_import_payload,
                 "sync_now": sync,
                 "hltb_pending": len([item for item in all_games if item["hltb"] is None]),
                 "total_minutes": sum(known),
@@ -282,6 +373,8 @@ def create_app(*, service=None):
         selected = next((game for game in library["games"] if game["appid"] == appid), None)
         if selected is None:
             raise SteamError("Esse jogo não está na biblioteca importada.", 404)
+        achievements = app.state.library.achievements(steamid, appid)
+        trophy_guide = load_trophy_guide(app.state.library.database, appid)
         return render(
             request,
             "game_workspace.html",
@@ -289,6 +382,10 @@ def create_app(*, service=None):
                 "selected": selected,
                 "library": library,
                 "workspace": load_game_workspace(app.state.library.database, steamid, appid),
+                "achievements": achievements,
+                "hltb": app.state.library.hltb(appid, selected["name"]),
+                "trophy_guide": trophy_guide,
+                "guide_pairing": pair_trophy_guide(trophy_guide, achievements),
             },
         )
 
@@ -308,8 +405,10 @@ def create_app(*, service=None):
         return {"ok": True}
 
     @app.post("/profile/{steamid}/games/{appid}/workspace/link")
-    def workspace_link(steamid: str, appid: int, label: str = Form(...), url: str = Form(...)):
-        add_game_link(app.state.library.database, steamid, appid, label.strip(), url.strip())
+    def workspace_link(steamid: str, appid: int, label: str = Form(""), url: str = Form(...)):
+        clean_url = url.strip()
+        clean_label = label.strip() or clean_url
+        add_game_link(app.state.library.database, steamid, appid, clean_label, clean_url)
         return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
 
     @app.post("/api/profile/{steamid}/games/{appid}/trophy-guide")
@@ -321,6 +420,25 @@ def create_app(*, service=None):
             return JSONResponse({"detail": "Informe a URL do guia."}, status_code=422)
         result = app.state.library.trophy_guide(appid, url.strip(), refresh=True)
         app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
+        return result
+
+    @app.post("/api/profile/{steamid}/games/{appid}/trophy-guide/import")
+    def trophy_guide_import(steamid: str, appid: int, payload: dict):
+        library = app.state.library.get_library(steamid)
+        if not any(game["appid"] == appid for game in library["games"]):
+            raise SteamError("Esse jogo não está na biblioteca importada.", 404)
+        try:
+            encoded = str(payload.get("html_b64", ""))
+            padding = "=" * (-len(encoded) % 4)
+            raw_html = base64.urlsafe_b64decode(encoded + padding)
+            try:
+                html = zlib.decompress(raw_html, wbits=31).decode("utf-8")
+            except zlib.error:
+                html = raw_html.decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as error:
+            raise SteamError("O HTML recebido do guia é inválido.", 422) from error
+        result = app.state.library.trophy_guide_html(appid, payload.get("url", ""), html)
+        app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}")
         return result
 
     @app.post("/profile/{steamid}/refresh", response_class=HTMLResponse)
@@ -392,6 +510,27 @@ def create_app(*, service=None):
         result = app.state.library.add_external_game(steamid, int(match.group(1)))
         app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
         message = f"{result['game']['name']} {'adicionado' if result['added'] else 'já está'} na sua lista"
+        return RedirectResponse(f"/profile/{steamid}?notice={quote(message)}", status_code=303)
+
+    @app.post("/api/profile/{steamid}/steam-import")
+    def steam_browser_import(steamid: str, payload: dict):
+        result = app.state.library.import_browser_games(steamid, payload.get("games"))
+        app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
+        return {"ok": True, **result}
+
+    @app.post("/profile/{steamid}/steam-import-paste", response_class=HTMLResponse)
+    def steam_browser_import_paste(request: Request, steamid: str, payload: str = Form(...)):
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError as error:
+            raise SteamError("O resultado colado não é um JSON válido.", 422) from error
+        if not isinstance(data, dict):
+            raise SteamError("O resultado colado precisa ser um objeto JSON com a chave games.", 422)
+        result = app.state.library.import_browser_games(steamid, data.get("games"))
+        app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
+        message = f"{result['added']} jogos importados pelo navegador."
+        if result.get("updated"):
+            message += f" {result['updated']} jogos externos foram atualizados para FAMÍLIA."
         return RedirectResponse(f"/profile/{steamid}?notice={quote(message)}", status_code=303)
 
     @app.get("/api/profile/{steamid}")

@@ -40,18 +40,6 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       <h2>{{ library.game_count }} <small>jogos</small></h2>
       <span class="mini-total">{{ total_minutes | hours }} h registradas</span>
     </div>
-    <details class="profile-switcher">
-      <summary>Trocar perfil</summary>
-      {% include "profile_form.html" %}
-    </details>
-    <section class="external-tools" aria-label="Adicionar jogos">
-      <span class="eyebrow">ADICIONE UM JOGO EXTERNO</span>
-      <form action="/profile/{{ library.steamid }}/games/add" method="post" class="external-add-form">
-        <label for="appid-or-url">Adicionar por AppID ou URL</label>
-        <div class="external-add-row"><input id="appid-or-url" name="appid_or_url" placeholder="Ex.: 1245620" required><button class="sidebar-action" type="submit">Adicionar</button></div>
-        <p>Útil para consultar HLTB e planejar jogos fora da biblioteca oficial.</p>
-      </form>
-    </section>
     <form method="get" class="card-filters" action="/profile/{{ library.steamid }}">
       {% if open_modal %}<input type="hidden" name="game" value="{{ selected.appid }}">{% endif %}
       <label for="q">Buscar jogo</label>
@@ -74,8 +62,39 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
         <option value="percent_asc" {% if sort == 'percent_asc' %}selected{% endif %}>Menor % de conquistas</option>
         <option value="hltb_desc" {% if sort == 'hltb_desc' %}selected{% endif %}>Maior completionist HLTB</option>
         <option value="hltb_asc" {% if sort == 'hltb_asc' %}selected{% endif %}>Menor completionist HLTB</option>
+        <option value="guide_difficulty_desc" {% if sort == 'guide_difficulty_desc' %}selected{% endif %}>Maior dificuldade do guia</option>
+        <option value="guide_difficulty_asc" {% if sort == 'guide_difficulty_asc' %}selected{% endif %}>Menor dificuldade do guia</option>
+        <option value="guide_hours_desc" {% if sort == 'guide_hours_desc' %}selected{% endif %}>Mais horas do guia</option>
+        <option value="guide_hours_asc" {% if sort == 'guide_hours_asc' %}selected{% endif %}>Menos horas do guia</option>
       </select>
     </form>
+    <section class="external-tools" aria-label="Adicionar jogos">
+      <details class="external-game-add">
+        <summary>Adicionar jogo externo</summary>
+        <form action="/profile/{{ library.steamid }}/games/add" method="post" class="external-add-form">
+        <label for="appid-or-url">Adicionar por AppID ou URL</label>
+        <div class="external-add-row"><input id="appid-or-url" name="appid_or_url" placeholder="Ex.: 1245620" required><button class="sidebar-action" type="submit">Adicionar</button></div>
+        <p>Útil para consultar HLTB e planejar jogos fora da biblioteca oficial.</p>
+      </form>
+      </details>
+      <details class="steam-browser-import"{% if steam_import_payload %} open{% endif %}>
+        <summary>Importe aqui jogos da família Steam</summary>
+        <p>Na página logada da Steam, abra o Console do navegador, cole o script copiado e execute. Ele consulta todos os jogos, os perfeitos e os jogados recentemente.</p>
+        <a class="steam-import-page-link" href="https://steamcommunity.com/profiles/{{ library.steamid }}/games/?tab=all" target="_blank" rel="noopener noreferrer">Abrir biblioteca de jogos na Steam ↗</a>
+        <button type="button" class="sidebar-action" data-copy-steam-import data-steamid="{{ library.steamid }}">Copiar script</button>
+        <button type="button" class="import-fallback-toggle" data-import-fallback-toggle>Problemas com o script?</button>
+        <form class="import-fallback-form" data-import-fallback-form{% if steam_import_payload %} data-auto-import{% endif %} action="/profile/{{ library.steamid }}/steam-import-paste" method="post" hidden>
+          <label for="steam-import-payload">O script retornou um resultado? Cole aqui</label>
+          <textarea id="steam-import-payload" name="payload" rows="4" placeholder='{"games":[...]}' required>{{ steam_import_payload }}</textarea>
+          <button class="sidebar-action" type="submit">Importar resultado</button>
+          {% if steam_import_payload %}<div class="steam-import-progress" data-steam-import-progress><span>Importando jogos encontrados...</span><i></i></div>{% endif %}
+        </form>
+      </details>
+    </section>
+    <details class="profile-switcher">
+      <summary>Trocar perfil</summary>
+      {% include "profile_form.html" %}
+    </details>
     <div class="sidebar-footer">
       <div class="library-summary">
         <span data-filter-count>{{ games | length }} encontrados</span
@@ -161,6 +180,8 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
         data-hours="{{ item.playtime_forever if item.playtime_forever is not none else '' }}"
         data-recent="{{ item.rtime_last_played or '' }}"
         data-hltb="{{ item.hltb.get('completionist') if item.hltb and item.hltb.get('completionist') is not none else '' }}"
+        data-guide-difficulty="{{ item.trophy_guide.get('difficulty') if item.trophy_guide and item.trophy_guide.get('difficulty') is not none else '' }}"
+        data-guide-hours="{{ item.trophy_guide.get('hours') if item.trophy_guide and item.trophy_guide.get('hours') is not none else '' }}"
         data-name-order="{{ item.name_order }}"
         data-detail-url="/profile/{{ library.steamid }}/games/{{ item.appid }}"
         {% if selected and selected.appid == item.appid %}aria-current="true"{% endif %}
@@ -201,6 +222,12 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
             elif item.hltb and item.hltb.get('error') %}HLTB indisponível{% else
             %}HLTB a consultar{% endif %}
           </div>
+          {% if item.trophy_guide and not item.trophy_guide.error %}
+          <div class="card-guide-meta">
+            {% if item.trophy_guide.hours is not none %}<span class="guide-metric guide-hours-{% if item.trophy_guide.hours <= 10 %}easy{% elif item.trophy_guide.hours <= 25 %}medium{% else %}hard{% endif %}">Guia · {{ item.trophy_guide.hours | round(0) | int }} h</span>{% endif %}
+            {% if item.trophy_guide.difficulty is not none %}<span class="guide-metric guide-difficulty-{% if item.trophy_guide.difficulty <= 3 %}easy{% elif item.trophy_guide.difficulty <= 6 %}medium{% else %}hard{% endif %}">{{ item.trophy_guide.difficulty | round(0) | int }}/10</span>{% endif %}
+          </div>
+          {% endif %}
           {% include "card_progress.html" %}
         </div>
       </a>

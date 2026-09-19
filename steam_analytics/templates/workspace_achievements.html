@@ -1,0 +1,23 @@
+{% if achievements and achievements.available and achievements['items'] %}
+<section class="workspace-guide-content planner-card workspace-achievements">
+  <div class="workspace-achievements-heading">
+    <div>
+      {% if is_platinum %}<span class="eyebrow">COLEÇÃO COMPLETA</span>{% endif %}
+      <h2>Conquistas</h2>
+    </div>
+    {% if is_platinum %}<span class="completion-count">{{ achievements.total }} de {{ achievements.total }} desbloqueadas</span>{% endif %}
+  </div>
+  <div class="workspace-achievement-list">
+    {% for achievement in achievements['items'] %}
+    <article class="workspace-achievement{% if achievement.unlocked %} is-unlocked{% endif %}">
+      <img src="{{ achievement.icon if achievement.unlocked else achievement.icon_gray }}" alt="" width="48" height="48" loading="lazy" />
+      <div>
+        <h3>{{ achievement.name }}{% if achievement.is_online %}<span class="online-badge">ONLINE</span>{% endif %}</h3>
+        <p>{{ achievement.description or 'Descrição indisponível.' }}</p>
+      </div>
+      {% if is_platinum %}<span class="achievement-earned" aria-label="Desbloqueada">✓</span>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

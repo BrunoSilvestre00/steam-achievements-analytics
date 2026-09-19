@@ -1,6 +1,7 @@
 {% extends "base.html" %} {% block title %}{{ selected.name }} · Área de
-planejamento{% endblock %} {% block body_class %}workspace-page{% endblock %} {%
+planejamento{% endblock %} {% block body_class %}workspace-page{% if achievements and achievements.available and achievements.total and achievements.unlocked == achievements.total %} platinum-workspace{% endif %}{% endblock %} {%
 block content %}
+{% set is_platinum = achievements and achievements.available and achievements.total and achievements.unlocked == achievements.total %}
 <div class="workspace-toolbar">
   <div>
     <a
@@ -18,19 +19,80 @@ block content %}
   >
 </div>
 <div class="game-workspace">
+  {% if is_platinum %}
+  <section class="completion-hero" aria-labelledby="completion-title">
+    <img class="completion-cover" src="https://cdn.akamai.steamstatic.com/steam/apps/{{ selected.appid }}/header.jpg" alt="Capa de {{ selected.name }}" />
+    <div class="completion-copy">
+      <span class="eyebrow">PLATINA CONQUISTADA</span>
+      <h2 id="completion-title">Mais um <span>100%</span> para a coleção.</h2>
+      <p>Todas as conquistas desbloqueadas. Cada desafio, uma conquista.</p>
+      <div class="completion-stats">
+        <span><strong>{{ achievements.unlocked }} / {{ achievements.total }}</strong> conquistas</span>
+        {% if selected.playtime_forever is defined and selected.playtime_forever is not none %}
+        <span><strong>{{ (selected.playtime_forever / 60) | round(1) }} h</strong> jogadas na Steam</span>
+        {% endif %}
+      </div>
+    </div>
+    <img class="completion-emblem" src="{{ url_for('static', path='assets/100-badge.png') }}" width="104" height="104" alt="100% concluído" />
+  </section>
+  {% include "workspace_achievements.html" %}
+  <details class="platinum-collapsible completion-reference">
+    <summary>Tempos e dados do guia <span class="collapse-hint">HLTB · Trophy Guide</span></summary>
+  {% else %}
   <div class="workspace-hero">
-    <img
-      src="https://cdn.akamai.steamstatic.com/steam/apps/{{ selected.appid }}/header.jpg"
-      alt=""
-    />
+    <div class="workspace-hero-art">
+      <img
+        src="https://cdn.akamai.steamstatic.com/steam/apps/{{ selected.appid }}/header.jpg"
+        alt=""
+      />
+    </div>
     <div>
       <span class="eyebrow">ÁREA DE PLANEJAMENTO</span>
-      <p>
-        Organize sua rota até o 100%, anote decisões e reúna os melhores links
-        em um só lugar.
-      </p>
+      <p>Organize sua rota até o 100%, anote decisões e reúna os melhores links em um só lugar.</p>
     </div>
   </div>
+  {% endif %}
+  <section class="workspace-overview">
+    {% if not is_platinum %}
+    <div class="workspace-overview-card progress-overview-card">
+      <span class="eyebrow">PROGRESSO</span>
+      <h2>{% if achievements and achievements.available %}{{ achievements.unlocked }}/{{ achievements.total }}{% else %}?{% endif %}</h2>
+      <p>conquistas desbloqueadas</p>
+      {% if achievements and achievements.available and achievements.total %}<progress value="{{ achievements.unlocked }}" max="{{ achievements.total }}"></progress>{% endif %}
+    </div>
+    {% endif %}
+    <div class="workspace-overview-card hltb-overview-card">
+      <div class="overview-card-heading"><span class="eyebrow">HOWLONGTOBEAT</span><span class="overview-source">HLTB</span></div>
+      <div class="overview-metrics"><div><strong>{% if hltb and hltb.main_story is not none %}{{ hltb.main_story | round(0) | int }} h{% else %}?{% endif %}</strong><small>História</small></div><div><strong>{% if hltb and hltb.completionist is not none %}{{ hltb.completionist | round(0) | int }} h{% else %}?{% endif %}</strong><small>Completionist</small></div></div>
+    </div>
+    {% if trophy_guide and not trophy_guide.error %}
+    <div class="workspace-overview-card guide-overview-card">
+      <div class="overview-card-heading"><span class="eyebrow">TROPHY GUIDE</span><span class="overview-source">PSN</span></div>
+      <div class="overview-metrics guide-overview-metrics"><div class="guide-overview-difficulty"><strong>{{ trophy_guide.difficulty | round(0) | int if trophy_guide.difficulty is not none else '?' }}<small>/10</small></strong><small>Dificuldade</small></div><div class="guide-overview-hours"><strong>{{ trophy_guide.hours | round(0) | int if trophy_guide.hours is not none else '?' }}{% if trophy_guide.hours is not none %} h{% endif %}</strong><small>Tempo estimado</small></div><div class="guide-overview-runs"><strong>{{ trophy_guide.playthroughs if trophy_guide.playthroughs is not none else '?' }}</strong><small>Playthroughs</small></div></div>
+      {% if trophy_guide.tags %}<div class="guide-tags">{% for tag in (trophy_guide.tags_pt or trophy_guide.tags) %}<span class="guide-tag {% if tag|lower in ['collectable', 'collectible', 'colecionável', 'colecionavel', 'time limited', 'tempo limitado'] %}guide-tag-alert{% elif tag|lower in ['missable', 'perdível', 'perdivel', 'buggy', 'com bugs'] %}guide-tag-warning{% elif tag|lower in ['unmissable', 'imperdível', 'imperdivel', 'story', 'história', 'historia'] %}guide-tag-safe{% endif %}">{{ tag }}</span>{% endfor %}</div>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+  {% if is_platinum %}</details>{% endif %}
+  {% if trophy_guide and trophy_guide.roadmap %}
+  {% if is_platinum %}<details class="platinum-collapsible"><summary>Roadmap e dicas de planejamento</summary>{% endif %}
+  <section class="workspace-guide-content planner-card"><h2>Roadmap</h2>
+{% for step in trophy_guide.roadmap %}<article class="guide-roadmap-step"><h3>{{ step.title_pt or step.title }}</h3>
+        <p>{{ step.body_pt or step.body }}</p>{% if step.trophies %}<div class="roadmap-trophies">{% for trophy in step.trophies %}<article class="trophy roadmap-trophy-card"><div class="roadmap-trophy-heading"><strong>{{ trophy.name_pt or trophy.name }}</strong>{% for tag in (trophy.tags_pt or trophy.tags) %}<span class="guide-trophy-tag">{{ tag }}</span>{% endfor %}</div>{% if trophy.description_pt or trophy.description %}<p>{{ trophy.description_pt or trophy.description }}</p>{% endif %}{% if trophy.name_pt or trophy.description_pt or trophy.guide_pt %}<details class="guide-original"><summary>Ver versão original em inglês</summary><p><strong>{{ trophy.name }}</strong></p>{% if trophy.description %}<p>{{ trophy.description }}</p>{% endif %}{% if trophy.guide %}<p>{{ trophy.guide }}</p>{% endif %}</details>{% endif %}</article>{% endfor %}</div>{% endif %}{% if step.title_pt or step.body_pt %}<details class="guide-original"><summary>Ver versão original em inglês</summary><p>{{ step.title }}</p><p>{{ step.body }}</p></details>{% endif %}</article>{% endfor %}</section>
+  {% if is_platinum %}</details>{% endif %}
+  {% endif %}
+  {% if guide_pairing and trophy_guide and trophy_guide.trophies %}
+  <details class="workspace-guide-content planner-card pairing-card guide-collapsible"><summary>Conquistas pareadas <small>{{ guide_pairing.paired | length }}</small></summary>
+{% for pair in guide_pairing.paired %}{% set trophy = pair.trophy %}{% set achievement = pair.achievement %}<article class="trophy paired-trophy-item"><div class="paired-trophy-heading"><img src="{{ achievement.icon if achievement.unlocked else achievement.icon_gray }}" alt="" loading="lazy" /><div><h3>{{ trophy.name_pt or trophy.name }}{% for tag in (trophy.tags_pt or trophy.tags) %}<span class="guide-trophy-tag {% if tag|lower in ['collectable', 'collectible', 'colecionável', 'colecionavel', 'time limited', 'tempo limitado'] %}guide-tag-alert{% elif tag|lower in ['missable', 'perdível', 'perdivel', 'buggy', 'com bugs'] %}guide-tag-warning{% elif tag|lower in ['unmissable', 'imperdível', 'imperdível', 'story', 'história', 'historia'] %}guide-tag-safe{% endif %}">{{ tag }}</span>{% endfor %}</h3>
+<small>{% if achievement.unlocked %}Conquista desbloqueada{% else %}Pendente na Steam{% endif %} · {{ achievement.name }}</small></div></div>{% if trophy.description_pt or trophy.description %}<p class="muted">{{ trophy.description_pt or trophy.description }}</p>{% endif %}{% if trophy.guide_pt or trophy.guide %}<p>{{ trophy.guide_pt or trophy.guide }}</p>{% endif %}<details class="guide-original"><summary>Ver versão original em inglês</summary><p>{{ trophy.name }}</p>{% if trophy.description %}<p>{{ trophy.description }}</p>{% endif %}{% if trophy.guide %}<p>{{ trophy.guide }}</p>{% endif %}</details></article>{% endfor %}</details>
+  <details class="workspace-guide-content planner-card pairing-card guide-collapsible"><summary>Troféus do guia sem pareamento <small>{{ guide_pairing.unpaired_guide | length }}</small></summary>
+{% for trophy in guide_pairing.unpaired_guide %}<article class="trophy guide-trophy-item"><h3>{{ trophy.name_pt or trophy.name }}{% for tag in (trophy.tags_pt or trophy.tags) %}<span class="guide-trophy-tag {% if tag|lower in ['collectable', 'collectible', 'colecionável', 'colecionavel', 'time limited', 'tempo limitado'] %}guide-tag-alert{% elif tag|lower in ['missable', 'perdível', 'perdivel', 'buggy', 'com bugs'] %}guide-tag-warning{% elif tag|lower in ['unmissable', 'imperdível', 'imperdível', 'story', 'história', 'historia'] %}guide-tag-safe{% endif %}">{{ tag }}</span>{% endfor %}</h3>{% if trophy.guide_pt or trophy.guide %}<p>{{ trophy.guide_pt or trophy.guide }}</p>{% endif %}<details class="guide-original"><summary>Ver versão original em inglês</summary><p>{{ trophy.name }}</p><p>{{ trophy.guide }}</p></details></article>{% endfor %}</details>
+
+  {% endif %}
+  {% if not is_platinum %}
+  {% include "workspace_achievements.html" %}
+  {% endif %}
+  {% if is_platinum %}<details class="platinum-collapsible"><summary>Notas, checklist e links</summary>{% endif %}
   <div class="workspace-columns">
     <section class="planner-card">
       <h2>Checklist</h2>
@@ -87,11 +149,14 @@ block content %}
         method="post"
         action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/link"
       >
-        <input name="label" placeholder="Nome do link" required /><input
+        <input
           name="url"
           type="url"
-          placeholder="https://…"
+          placeholder="https://..."
           required
+        /><input
+          name="label"
+          placeholder="Nome do link (opcional)"
         /><button type="submit">Adicionar link</button>
       </form>
       {% for link in workspace.links %}<a
@@ -105,5 +170,6 @@ block content %}
       {% endfor %}
     </section>
   </div>
+  {% if is_platinum %}</details>{% endif %}
 </div>
 {% endblock %}

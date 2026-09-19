@@ -19,7 +19,7 @@ def connect(path):
     db.execute("PRAGMA foreign_keys = ON")
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 12:
+        if version > 13:
             raise sqlite3.DatabaseError("Versão do banco não suportada")
         if version == 0:
             with db:
@@ -126,6 +126,14 @@ def connect(path):
                     db.execute("ALTER TABLE library_games ADD COLUMN source TEXT NOT NULL DEFAULT 'steam'")
                 db.execute("PRAGMA user_version = 12")
                 version = 12
+        if version < 13:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(trophy_guides)")}
+                for name in ("tags_json", "roadmap_json", "trophies_json"):
+                    if name not in columns:
+                        db.execute(f"ALTER TABLE trophy_guides ADD COLUMN {name} TEXT")
+                db.execute("PRAGMA user_version = 13")
+                version = 13
         yield db
     finally:
         db.close()
@@ -201,6 +209,14 @@ def save_external_games(path, steamid, games, source):
         db.execute(
             "UPDATE libraries SET game_count=(SELECT count(*) FROM library_games WHERE steamid=?), imported_at=? WHERE steamid=?",
             (steamid, now, steamid),
+        )
+
+
+def update_game_source(path, steamid, appid, source):
+    with connect(path) as db, db:
+        db.execute(
+            "UPDATE library_games SET source=? WHERE steamid=? AND appid=?",
+            (source, steamid, appid),
         )
 
 
@@ -456,17 +472,38 @@ def load_trophy_guide(path, appid):
         return None
     with connect(path) as db:
         row = db.execute("SELECT * FROM trophy_guides WHERE appid = ?", (appid,)).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        result = dict(row)
+        for key in ("tags_json", "roadmap_json", "trophies_json"):
+            raw = result.pop(key, None)
+            result[key[:-5]] = json.loads(raw) if raw else []
+        return result
+
+
+def load_trophy_guide_summary(path, appids):
+    if not Path(path).exists() or not appids:
+        return {}
+    marks = ",".join("?" for _ in appids)
+    with connect(path) as db:
+        return {
+            row["appid"]: dict(row)
+            for row in db.execute(
+                f"SELECT appid, difficulty, playthroughs, hours, hours_text, error FROM trophy_guides WHERE appid IN ({marks})",
+                tuple(appids),
+            )
+        }
 
 
 def save_trophy_guide(path, appid, data):
     with connect(path) as db, db:
         db.execute(
             """INSERT INTO trophy_guides
-            (appid, url, difficulty, playthroughs, hours, hours_text, imported_at, error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            (appid, url, difficulty, playthroughs, hours, hours_text, tags_json, roadmap_json, trophies_json, imported_at, error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
             ON CONFLICT(appid) DO UPDATE SET url=excluded.url, difficulty=excluded.difficulty,
             playthroughs=excluded.playthroughs, hours=excluded.hours, hours_text=excluded.hours_text,
+            tags_json=excluded.tags_json, roadmap_json=excluded.roadmap_json, trophies_json=excluded.trophies_json,
             imported_at=excluded.imported_at, error=NULL""",
             (
                 appid,
@@ -475,6 +512,9 @@ def save_trophy_guide(path, appid, data):
                 data.get("playthroughs"),
                 data.get("hours"),
                 data.get("hours_text"),
+                json.dumps(data.get("tags", []), ensure_ascii=False),
+                json.dumps(data.get("roadmap", []), ensure_ascii=False),
+                json.dumps(data.get("trophies", []), ensure_ascii=False),
                 data["imported_at"],
             ),
         )
@@ -484,8 +524,8 @@ def save_trophy_guide_error(path, appid, data):
     with connect(path) as db, db:
         db.execute(
             """INSERT INTO trophy_guides
-            (appid, url, difficulty, playthroughs, hours, hours_text, imported_at, error)
-            VALUES (?, ?, NULL, NULL, NULL, NULL, ?, ?)
+            (appid, url, difficulty, playthroughs, hours, hours_text, tags_json, roadmap_json, trophies_json, imported_at, error)
+            VALUES (?, ?, NULL, NULL, NULL, NULL, '[]', '[]', '[]', ?, ?)
             ON CONFLICT(appid) DO UPDATE SET url=excluded.url, imported_at=excluded.imported_at,
             error=excluded.error""",
             (appid, data["url"], data["imported_at"], data["error"]),

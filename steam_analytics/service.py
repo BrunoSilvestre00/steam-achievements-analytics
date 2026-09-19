@@ -24,9 +24,10 @@ from .storage import (
     save_trophy_guide,
     save_trophy_guide_error,
     update_game_playtime,
+    update_game_source,
     update_personaname,
 )
-from .trophy import fetch_trophy_guide
+from .trophy import fetch_trophy_guide, parse_trophy_guide
 
 ONLINE_ACHIEVEMENT_HINTS = re.compile(
     r"\b(?:online|multiplayer|co-?op|cooperative|pvp|versus|matchmaking|ranked|leaderboard)\b"
@@ -131,6 +132,16 @@ class LibraryService:
             return cached
         try:
             result = fetch_trophy_guide(url)
+            save_trophy_guide(self.database, appid, result)
+            return {**result, "appid": appid, "error": None}
+        except Exception as error:
+            result = {"url": url, "error": str(error), "imported_at": datetime.now(timezone.utc).isoformat()}
+            save_trophy_guide_error(self.database, appid, result)
+            return {**result, "appid": appid}
+
+    def trophy_guide_html(self, appid, url, html):
+        try:
+            result = parse_trophy_guide(url, html, translate=True)
             save_trophy_guide(self.database, appid, result)
             return {**result, "appid": appid, "error": None}
         except Exception as error:
@@ -286,6 +297,44 @@ class LibraryService:
         if not exists:
             save_external_games(self.database, steamid, [game], "external")
         return {"added": not exists, "game": game}
+
+    def import_browser_games(self, steamid, games):
+        """Importa jogos encontrados pelo navegador na página autenticada da Steam."""
+        if not valid_steamid(steamid):
+            raise SteamError("SteamID inválido.", 422)
+        current = load_library(self.database, steamid)
+        if current is None:
+            raise SteamError("Carregue a biblioteca antes de importar dados da Steam.", 404)
+        known = {game["appid"] for game in current["games"]}
+        existing_sources = {game["appid"]: game.get("source") for game in current["games"]}
+        clean = {}
+        family_updates = []
+        for item in games if isinstance(games, list) else []:
+            try:
+                appid = int(item.get("appid"))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            name = str(item.get("name") or f"Steam App {appid}").strip()[:200]
+            if appid > 0 and appid not in known:
+                clean[appid] = {"appid": appid, "name": name}
+            elif appid > 0 and item.get("source") == "perfect" and existing_sources.get(appid) == "external":
+                family_updates.append({"appid": appid, "name": name})
+        missing = list(clean.values())
+        save_external_games(self.database, steamid, missing, "family")
+        for game in family_updates:
+            update_game_source(self.database, steamid, game["appid"], "family")
+        # Consulta as conquistas apenas dos jogos novos para que a porcentagem
+        # e o contador de platinas sejam atualizados imediatamente.
+        for game in [*missing, *family_updates]:
+            try:
+                self.achievements(steamid, game["appid"])
+            except SteamError:
+                pass
+        return {
+            "found": len(games) if isinstance(games, list) else 0,
+            "added": len(missing),
+            "updated": len(family_updates),
+        }
 
     def update_playtime(self, steamid, appid):
         client = self.client or SteamClient(self.api_key)

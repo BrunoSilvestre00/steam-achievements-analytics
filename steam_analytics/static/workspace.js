@@ -1,3 +1,120 @@
+(() => {
+  if (document.body.classList.contains("collector-page")) return;
+  const importField = document.querySelector("#steam-import-payload");
+  if (importField?.value) {
+    importField.focus();
+    importField.select();
+  }
+  const guideHash = window.location.hash.match(/^#trophy-guide-import=(.+)$/);
+  if (guideHash) {
+    try {
+      const normalized = guideHash[1].replaceAll("-", "+").replaceAll("_", "/") + "===".slice((guideHash[1].length + 3) % 4);
+      const bytes = Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
+      const payload = JSON.parse(new TextDecoder().decode(bytes));
+      const pageUrl = new URL(window.location.href);
+      const sid = pageUrl.pathname.split("/")[2];
+      const appid = pageUrl.searchParams.get("game");
+      const closeAfterImport = pageUrl.searchParams.get("close") === "1";
+      pageUrl.hash = "game-modal";
+      history.replaceState({}, "", `${pageUrl.pathname}${pageUrl.search}${pageUrl.hash}`);
+      fetch(`/api/profile/${sid}/games/${appid}/trophy-guide/import`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        .then((response) => { if (!response.ok) throw new Error("Falha ao importar o guia"); return response.json(); })
+        .then(() => {
+          if (closeAfterImport) {
+            window.setTimeout(() => window.close(), 800);
+            return;
+          }
+          window.location.reload();
+        })
+        .catch(() => alert("N\u00e3o foi poss\u00edvel importar o guia. Abra o modal novamente e tente copiar o script."));
+    } catch { alert("O resultado do guia n\u00e3o p\u00f4de ser lido."); }
+  }
+  const autoGuideForm = document.querySelector("[data-auto-guide-import]");
+  if (autoGuideForm) {
+    const guideUrl = new URL(window.location.href);
+    guideUrl.searchParams.delete("trophy_guide_import");
+    history.replaceState({}, "", `${guideUrl.pathname}${guideUrl.search}${guideUrl.hash}`);
+    const field = autoGuideForm.querySelector("#guide-import-payload");
+    const progress = autoGuideForm.querySelector("[data-guide-import-progress]");
+    fetch(autoGuideForm.action, { method: "POST", headers: { "Content-Type": "application/json" }, body: field.value })
+      .then((response) => {
+        if (!response.ok) throw new Error("Falha ao importar o guia");
+        return response.json();
+      })
+      .then(() => window.location.replace(guideUrl.toString()))
+      .catch(() => { if (progress) progress.textContent = "N\u00e3o foi poss\u00edvel importar o guia automaticamente."; });
+  }
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-copy-guide-import]");
+    if (!button) return;
+    const sid = button.dataset.steamid;
+    const appid = button.dataset.appid;
+    // Build the copied script from plain fragments. Keeping profile values as
+    // JSON literals avoids nested template interpolation and quote mismatches.
+    const script = [
+      "(async()=>{",
+      "const bytes=new TextEncoder().encode(document.documentElement.outerHTML);",
+      "const compressed=await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream(\"gzip\"))).arrayBuffer();",
+      "let binary=\"\";new Uint8Array(compressed).forEach(byte=>binary+=String.fromCharCode(byte));",
+      "const data={url:location.href,html_b64:btoa(binary).replaceAll(\"+\",\"-\").replaceAll(\"/\",\"_\").replaceAll(\"=\",\"\")};",
+      "const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replaceAll(\"+\",\"-\").replaceAll(\"/\",\"_\").replaceAll(\"=\",\"\");",
+      "const target=\"http:\"+String.fromCharCode(47,47)+\"127.0.0.1:8000/profile/\"+",
+      JSON.stringify(sid),
+      "+\"/collect?kind=trophy&game=\"+",
+      JSON.stringify(appid),
+      "+\"#trophy-guide-import=\"+encoded;",
+      "const tab=window.open(target,\"_blank\");",
+      "if(!tab)alert(\"Permita pop-ups para abrir o guia no Steam Achievement Analytics.\");",
+      "})()",
+    ].join("");
+    try {
+      await navigator.clipboard.writeText(script);
+      button.textContent = "Script copiado";
+      window.setTimeout(() => { button.textContent = "Copiar script de importa\u00e7\u00e3o"; }, 2500);
+    } catch {
+      window.prompt("Copie este script e execute no Console do PSNProfiles:", script);
+    }
+  });
+  const autoImportForm = document.querySelector("[data-auto-import]");
+  if (autoImportForm) {
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("steam_import");
+    history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    const progress = autoImportForm.querySelector("[data-steam-import-progress]");
+    fetch(autoImportForm.action, { method: "POST", body: new FormData(autoImportForm) })
+      .then((response) => {
+        if (!response.ok) throw new Error("Falha ao importar");
+        window.location.replace(response.url);
+      })
+      .catch(() => {
+        if (progress) {
+          progress.classList.add("is-error");
+          progress.querySelector("span").textContent = "N\u00e3o foi poss\u00edvel importar automaticamente. Use o bot\u00e3o abaixo.";
+        }
+      });
+  }
+  document.querySelectorAll("[data-import-fallback-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const form = button.parentElement?.querySelector("[data-import-fallback-form]");
+      if (!form) return;
+      form.hidden = !form.hidden;
+      button.setAttribute("aria-expanded", String(!form.hidden));
+    });
+  });
+  document.querySelectorAll("[data-copy-steam-import]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const steamid = button.dataset.steamid;
+      const script = `(async()=>{const sid="${steamid}";const collect=(root,source)=>[...root.querySelectorAll('a[href*="/app/"] img[alt]')].map(img=>{const a=img.closest('a');const m=a?.href.match(/\\/app\\/(\\d+)/);return m?{appid:Number(m[1]),name:img.alt.trim(),source}:null}).filter(g=>g&&g.name);const tabs=["all","perfect","recent"];const active=new URL(location.href).searchParams.get("tab")||"all";let games=tabs.includes(active)?collect(document,active):[];for(const source of tabs){if(source===active)continue;try{const u=new URL(location.href);u.searchParams.set("tab",source);const response=await fetch(u,{credentials:"include"});if(!response.ok)throw new Error(String(response.status));const html=await response.text();games=games.concat(collect(new DOMParser().parseFromString(html,"text/html"),source));}catch(error){console.warn("Steam import: unable to read tab "+source,error);}}const unique=[...games.reduce((map,g)=>{if(!map.has(g.appid)||g.source==="perfect")map.set(g.appid,g);return map},new Map()).values()];const text=JSON.stringify({games:unique});const encoded=btoa(unescape(encodeURIComponent(text))).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");const tab=window.open("http:"+String.fromCharCode(47,47)+"127.0.0.1:8000/profile/"+sid+"/collect?kind=steam#steam-import-payload="+encoded,"_blank");if(!tab)alert("Permita pop-ups para abrir o resultado no Steam Achievement Analytics.");})()`;
+      try {
+        await navigator.clipboard.writeText(script);
+        button.textContent = "Script copiado";
+        window.setTimeout(() => { button.textContent = "Copiar script"; }, 2500);
+      } catch {
+        window.prompt("Copie este script e execute no Console da Steam:", script);
+      }
+    });
+  });
+})();
 // O Python renderiza os detalhes. Este script troca o painel sem recarregar a página.
 (() => {
   const panel = document.getElementById("game-detail");
@@ -74,6 +191,10 @@
         ? card.dataset.percent
         : field.startsWith("hltb")
           ? card.dataset.hltb
+          : field.startsWith("guide_difficulty")
+            ? card.dataset.guideDifficulty
+            : field.startsWith("guide_hours")
+              ? card.dataset.guideHours
           : field === "hours"
             ? card.dataset.hours
             : field === "recent"
@@ -235,11 +356,11 @@
         ],
         hltb: [
           "Atualizando HLTB",
-          "Consultando at? 20 jogos sem tempo de completionist...",
+          "Consultando até 20 jogos sem tempo de completionist...",
         ],
         perfect: [
-          "Atualizando platinas p?blicas",
-          "Consultando a aba p?blica de jogos perfeitos da Steam...",
+          "Atualizando platinas públicas",
+          "Consultando a aba pública de jogos perfeitos da Steam...",
         ],
       };
       const [title, label] = messages[select.value] || messages.all;
@@ -479,3 +600,5 @@
   });
   window.addEventListener("popstate", () => location.reload());
 })();
+
+

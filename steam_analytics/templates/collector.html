@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Coleta de dados · Steam Achievement Analytics{% endblock %}
+{% block body_class %}collector-page{% endblock %}
+{% block content %}
+<section class="collector-shell" data-collector data-kind="{{ kind }}" data-steamid="{{ steamid }}" data-appid="{{ appid or '' }}">
+  <div class="collector-card">
+    <div class="collector-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <span class="eyebrow">STEAM ACHIEVEMENT ANALYTICS</span>
+    <h1 data-collector-title>Estamos coletando os dados</h1>
+    <p data-collector-message>Recebendo o conteúdo e salvando as informações na sua biblioteca. Esta página será fechada quando a listagem estiver pronta.</p>
+    <div class="collector-progress" aria-hidden="true"><i></i></div>
+    <small data-collector-status>Preparando coleta...</small>
+  </div>
+</section>
+<script src="{{ url_for('static', path='collector.js') }}?v=1" defer></script>
+{% endblock %}

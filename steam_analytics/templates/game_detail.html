@@ -140,60 +140,62 @@
         <h3 id="trophy-guide-title">Trophy Guide</h3>
         <span class="source-badge">PSNPROFILES</span>
       </div>
-      {% if trophy_guide and not trophy_guide.error %}
-      <div class="planning-grid">
-        <div>
-          <span>Dificuldade</span
-          ><strong
-            >{% if trophy_guide.difficulty is not none %}{{
-            trophy_guide.difficulty | round(1) }}/10{% else %}—{% endif
-            %}</strong
-          >
+      {% set guide_ready = trophy_guide and not trophy_guide.error %}
+      {% if trophy_guide_import_payload %}
+      <form class="guide-auto-import" data-auto-guide-import action="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide/import">
+        <textarea id="guide-import-payload" hidden>{{ trophy_guide_import_payload }}</textarea>
+        <div data-guide-import-progress>Importando conteúdo do guia...</div>
+      </form>
+      {% endif %}
+      {% if guide_ready %}
+      <div class="guide-metrics planning-grid">
+        <div class="guide-metric-card guide-difficulty-card-{% if trophy_guide.difficulty is none %}none{% elif trophy_guide.difficulty <= 3 %}easy{% elif trophy_guide.difficulty <= 6 %}medium{% else %}hard{% endif %}">
+          <span>Dificuldade</span>
+          <strong>{% if trophy_guide.difficulty is not none %}{{ trophy_guide.difficulty | round(0) | int }}/10{% else %}—{% endif %}</strong>
+          <small>Nota da comunidade</small>
         </div>
-        <div>
-          <span>Playthroughs</span
-          ><strong
-            >{{ trophy_guide.playthroughs if trophy_guide.playthroughs is not
-            none else '—' }}</strong
-          >
+        <div class="guide-metric-card guide-runs-card-{% if trophy_guide.playthroughs is none %}none{% elif trophy_guide.playthroughs <= 1 %}easy{% elif trophy_guide.playthroughs <= 2 %}medium{% else %}hard{% endif %}">
+          <span>Playthroughs</span>
+          <strong>{% if trophy_guide.playthroughs is not none %}{{ trophy_guide.playthroughs }}{% else %}—{% endif %}</strong>
+          <small>Passagens mínimas</small>
         </div>
-        <div>
-          <span>Horas</span
-          ><strong
-            >{{ trophy_guide.hours_text or (trophy_guide.hours | round(1) if
-            trophy_guide.hours is not none else '—') }}{% if trophy_guide.hours
-            is not none and not trophy_guide.hours_text %} h{% endif %}</strong
-          >
+        <div class="guide-metric-card guide-hours-card-{% if trophy_guide.hours is none %}none{% elif trophy_guide.hours <= 10 %}easy{% elif trophy_guide.hours <= 25 %}medium{% else %}hard{% endif %}">
+          <span>Tempo estimado</span>
+          <strong>{% if trophy_guide.hours is not none %}{{ trophy_guide.hours | round(0) | int }} h{% else %}—{% endif %}</strong>
+          <small>Para conquistar tudo</small>
         </div>
       </div>
       <p class="guide-placeholder">
-        <a
-          href="{{ trophy_guide.url }}"
-          target="_blank"
-          rel="noopener noreferrer"
-          >Abrir guia no PSNProfiles ↗</a
-        >
+        <a href="{{ trophy_guide.url }}" target="_blank" rel="noopener noreferrer">Abrir guia no PSNProfiles ↗</a>
       </p>
-      {% elif trophy_guide and trophy_guide.error %}
-      <p class="detail-note" role="status">{{ trophy_guide.error }}</p>
-      {% endif %}
-      <form
-        class="trophy-guide-form"
-        data-guide-form="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide"
-      >
+      <details class="guide-update-panel">
+        <summary>Atualizar dados do Trophy Guide</summary>
+        <div class="guide-browser-import">
+          <p>Abra o guia no navegador e execute o script copiado no Console para importar o conteúdo atualizado.</p>
+          <button type="button" class="secondary guide-script-button" data-copy-guide-import data-steamid="{{ library.steamid }}" data-appid="{{ selected.appid }}">Copiar script de importação</button>
+        </div>
+        <form class="trophy-guide-form" data-guide-form="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide">
+          <label for="trophy-guide-url">URL do guia PSNProfiles</label>
+          <div class="guide-input-row">
+            <input id="trophy-guide-url" name="url" type="url" placeholder="https://psnprofiles.com/guide/..." value="{{ trophy_guide.url }}" required /><button class="secondary" type="submit">Salvar guia</button>
+          </div>
+          <p class="guide-form-status" role="status"></p>
+        </form>
+      </details>
+      {% else %}
+      {% if trophy_guide and trophy_guide.error %}<p class="detail-note" role="status">{{ trophy_guide.error }}</p>{% endif %}
+      <div class="guide-browser-import">
+        <p>Abra o guia no navegador e execute o script copiado no Console para importar o conteúdo completo.</p>
+        <button type="button" class="secondary guide-script-button" data-copy-guide-import data-steamid="{{ library.steamid }}" data-appid="{{ selected.appid }}">Copiar script de importação</button>
+      </div>
+      <form class="trophy-guide-form" data-guide-form="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide">
         <label for="trophy-guide-url">URL do guia PSNProfiles</label>
         <div class="guide-input-row">
-          <input
-            id="trophy-guide-url"
-            name="url"
-            type="url"
-            placeholder="https://psnprofiles.com/guide/..."
-            value="{{ trophy_guide.url if trophy_guide else '' }}"
-            required
-          /><button class="secondary" type="submit">Salvar guia</button>
+          <input id="trophy-guide-url" name="url" type="url" placeholder="https://psnprofiles.com/guide/..." value="{{ trophy_guide.url if trophy_guide else '' }}" required /><button class="secondary" type="submit">Salvar guia</button>
         </div>
         <p class="guide-form-status" role="status"></p>
       </form>
+      {% endif %}
     </section>
     {% if achievements.available and achievements.total > 0 %}
     <section class="achievement-section">
@@ -210,6 +212,7 @@
           <span class="muted">{{ achievements.unlocked }}/{{ achievements.total }}</span>
         </div>
       </div>
+      {% if trophy_guide and trophy_guide.tags %}<div class="achievement-guide-tags" aria-label="Características do guia">{% for tag in (trophy_guide.tags_pt or trophy_guide.tags) %}<span class="guide-tag {% if tag|lower in ['collectable', 'collectible', 'colecionável', 'colecionavel', 'time limited', 'tempo limitado'] %}guide-tag-alert{% elif tag|lower in ['missable', 'perdível', 'perdivel', 'buggy', 'com bugs'] %}guide-tag-warning{% elif tag|lower in ['unmissable', 'imperdível', 'imperdivel', 'story', 'história', 'historia'] %}guide-tag-safe{% endif %}">{{ tag }}</span>{% endfor %}</div>{% endif %}
       <div class="achievement-list">
         {% for achievement in achievements['items'] | sort(attribute='unlocked', reverse=true) %}
         <div class="achievement-row" data-achievement-row data-unlocked="{{ 'true' if achievement.unlocked else 'false' }}" data-online="{{ 'true' if achievement.is_online else 'false' }}">
