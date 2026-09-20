@@ -196,7 +196,7 @@
         <summary>Atualizar dados do Trophy Guide</summary>
         <div class="guide-browser-import">
           <p>Abra o guia no navegador e execute o script copiado no Console para importar o conteúdo atualizado.</p>
-          <button type="button" class="secondary guide-script-button" data-copy-guide-import data-steamid="{{ library.steamid }}" data-appid="{{ selected.appid }}">Copiar script de importação</button>
+          <button type="button" class="secondary guide-script-button" data-copy-guide-import data-app-origin="{{ request.base_url }}" data-steamid="{{ library.steamid }}" data-appid="{{ selected.appid }}">Copiar script de importação</button>
         </div>
         <form class="trophy-guide-form" data-guide-form="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide">
           <label for="trophy-guide-url">URL do guia PSNProfiles</label>
@@ -210,7 +210,7 @@
       {% if trophy_guide and trophy_guide.error %}<p class="detail-note" role="status">{{ trophy_guide.error }}</p>{% endif %}
       <div class="guide-browser-import">
         <p>Abra o guia no navegador e execute o script copiado no Console para importar o conteúdo completo.</p>
-        <button type="button" class="secondary guide-script-button" data-copy-guide-import data-steamid="{{ library.steamid }}" data-appid="{{ selected.appid }}">Copiar script de importação</button>
+        <button type="button" class="secondary guide-script-button" data-copy-guide-import data-app-origin="{{ request.base_url }}" data-steamid="{{ library.steamid }}" data-appid="{{ selected.appid }}">Copiar script de importação</button>
       </div>
       <form class="trophy-guide-form" data-guide-form="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/trophy-guide">
         <label for="trophy-guide-url">URL do guia PSNProfiles</label>

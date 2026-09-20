@@ -57,19 +57,19 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       </select>
       <label for="sort">Ordenar por</label>
       <select id="sort" name="sort">
-        <option value="name" {% if sort == 'name' %}selected{% endif %}>↑ Nome: A → Z</option>
-        <option value="hours" {% if sort == 'hours' %}selected{% endif %}>↓ Mais jogados</option>
-        <option value="recent" {% if sort == 'recent' %}selected{% endif %}>↓ Mais recentes</option>
-        <option value="percent_desc" {% if sort == 'percent_desc' %}selected{% endif %}>↓ Maior % de conquistas</option>
-        <option value="percent_asc" {% if sort == 'percent_asc' %}selected{% endif %}>↑ Menor % de conquistas</option>
-        <option value="achievements_desc" {% if sort == 'achievements_desc' %}selected{% endif %}>↓ Mais conquistas (total)</option>
-        <option value="achievements_asc" {% if sort == 'achievements_asc' %}selected{% endif %}>↑ Menos conquistas (total)</option>
-        <option value="hltb_desc" {% if sort == 'hltb_desc' %}selected{% endif %}>↓ Maior completionist HLTB</option>
-        <option value="hltb_asc" {% if sort == 'hltb_asc' %}selected{% endif %}>↑ Menor completionist HLTB</option>
-        <option value="guide_difficulty_desc" {% if sort == 'guide_difficulty_desc' %}selected{% endif %}>↓ Maior dificuldade do guia</option>
-        <option value="guide_difficulty_asc" {% if sort == 'guide_difficulty_asc' %}selected{% endif %}>↑ Menor dificuldade do guia</option>
-        <option value="guide_hours_desc" {% if sort == 'guide_hours_desc' %}selected{% endif %}>↓ Mais horas do guia</option>
-        <option value="guide_hours_asc" {% if sort == 'guide_hours_asc' %}selected{% endif %}>↑ Menos horas do guia</option>
+        <option value="name" {% if sort == 'name' %}selected{% endif %}>↓ Nome: A → Z</option>
+        <option value="hours" {% if sort == 'hours' %}selected{% endif %}>↑ Mais jogados</option>
+        <option value="recent" {% if sort == 'recent' %}selected{% endif %}>↑ Mais recentes</option>
+        <option value="percent_desc" {% if sort == 'percent_desc' %}selected{% endif %}>↑ Maior % de conquistas</option>
+        <option value="percent_asc" {% if sort == 'percent_asc' %}selected{% endif %}>↓ Menor % de conquistas</option>
+        <option value="achievements_desc" {% if sort == 'achievements_desc' %}selected{% endif %}>↑ Mais conquistas (total)</option>
+        <option value="achievements_asc" {% if sort == 'achievements_asc' %}selected{% endif %}>↓ Menos conquistas (total)</option>
+        <option value="hltb_desc" {% if sort == 'hltb_desc' %}selected{% endif %}>↑ Maior completionist HLTB</option>
+        <option value="hltb_asc" {% if sort == 'hltb_asc' %}selected{% endif %}>↓ Menor completionist HLTB</option>
+        <option value="guide_difficulty_desc" {% if sort == 'guide_difficulty_desc' %}selected{% endif %}>↑ Maior dificuldade do guia</option>
+        <option value="guide_difficulty_asc" {% if sort == 'guide_difficulty_asc' %}selected{% endif %}>↓ Menor dificuldade do guia</option>
+        <option value="guide_hours_desc" {% if sort == 'guide_hours_desc' %}selected{% endif %}>↑ Mais horas do guia</option>
+        <option value="guide_hours_asc" {% if sort == 'guide_hours_asc' %}selected{% endif %}>↓ Menos horas do guia</option>
       </select>
     </form>
     <section class="external-tools" aria-label="Adicionar jogos">
@@ -85,7 +85,7 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
         <summary>Importe aqui jogos da família Steam</summary>
         <p>Na página logada da Steam, abra o Console do navegador, cole o script copiado e execute. Ele consulta todos os jogos, os perfeitos e os jogados recentemente.</p>
         <a class="steam-import-page-link" href="https://steamcommunity.com/profiles/{{ library.steamid }}/games/?tab=all" target="_blank" rel="noopener noreferrer">Abrir biblioteca de jogos na Steam ↗</a>
-        <button type="button" class="sidebar-action" data-copy-steam-import data-steamid="{{ library.steamid }}">Copiar script</button>
+        <button type="button" class="sidebar-action" data-copy-steam-import data-app-origin="{{ request.base_url }}" data-steamid="{{ library.steamid }}">Copiar script</button>
         <button type="button" class="import-fallback-toggle" data-import-fallback-toggle>Problemas com o script?</button>
         <form class="import-fallback-form" data-import-fallback-form{% if steam_import_payload %} data-auto-import{% endif %} action="/profile/{{ library.steamid }}/steam-import-paste" method="post" hidden>
           <label for="steam-import-payload">O script retornou um resultado? Cole aqui</label>

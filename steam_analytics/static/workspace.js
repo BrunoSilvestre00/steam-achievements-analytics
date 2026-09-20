@@ -84,6 +84,9 @@
     if (!button) return;
     const sid = button.dataset.steamid;
     const appid = button.dataset.appid;
+    const appOrigin = (
+      button.dataset.appOrigin || window.location.origin
+    ).replace(/\/$/, "");
     // Build the copied script from plain fragments. Keeping profile values as
     // JSON literals avoids nested template interpolation and quote mismatches.
     const script = [
@@ -93,7 +96,7 @@
       'let binary="";new Uint8Array(compressed).forEach(byte=>binary+=String.fromCharCode(byte));',
       'const data={url:location.href,html_b64:btoa(binary).replaceAll("+","-").replaceAll("/","_").replaceAll("=","")};',
       'const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");',
-      'const target="http:"+String.fromCharCode(47,47)+"127.0.0.1:8000/profile/"+',
+      `const target=${JSON.stringify(appOrigin)}+"/profile/"+`,
       JSON.stringify(sid),
       '+"/collect?kind=trophy&game="+',
       JSON.stringify(appid),
@@ -158,7 +161,10 @@
   document.querySelectorAll("[data-copy-steam-import]").forEach((button) => {
     button.addEventListener("click", async () => {
       const steamid = button.dataset.steamid;
-      const script = `(async()=>{const sid="${steamid}";const collect=(root,source)=>[...root.querySelectorAll('a[href*="/app/"] img[alt]')].map(img=>{const a=img.closest('a');const m=a?.href.match(/\\/app\\/(\\d+)/);return m?{appid:Number(m[1]),name:img.alt.trim(),source}:null}).filter(g=>g&&g.name);const tabs=["all","perfect","recent"];const active=new URL(location.href).searchParams.get("tab")||"all";let games=tabs.includes(active)?collect(document,active):[];for(const source of tabs){if(source===active)continue;try{const u=new URL(location.href);u.searchParams.set("tab",source);const response=await fetch(u,{credentials:"include"});if(!response.ok)throw new Error(String(response.status));const html=await response.text();games=games.concat(collect(new DOMParser().parseFromString(html,"text/html"),source));}catch(error){console.warn("Steam import: unable to read tab "+source,error);}}const unique=[...games.reduce((map,g)=>{if(!map.has(g.appid)||g.source==="perfect")map.set(g.appid,g);return map},new Map()).values()];const text=JSON.stringify({games:unique});const encoded=btoa(unescape(encodeURIComponent(text))).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");const tab=window.open("http:"+String.fromCharCode(47,47)+"127.0.0.1:8000/profile/"+sid+"/collect?kind=steam#steam-import-payload="+encoded,"_blank");if(!tab)alert("Permita pop-ups para abrir o resultado no Steam Achievement Analytics.");})()`;
+      const appOrigin = (
+        button.dataset.appOrigin || window.location.origin
+      ).replace(/\/$/, "");
+      const script = `(async()=>{const appOrigin=${JSON.stringify(appOrigin)};const sid="${steamid}";const collect=(root,source)=>[...root.querySelectorAll('a[href*="/app/"] img[alt]')].map(img=>{const a=img.closest('a');const m=a?.href.match(/\\/app\\/(\\d+)/);return m?{appid:Number(m[1]),name:img.alt.trim(),source}:null}).filter(g=>g&&g.name);const tabs=["all","perfect","recent"];const active=new URL(location.href).searchParams.get("tab")||"all";let games=tabs.includes(active)?collect(document,active):[];for(const source of tabs){if(source===active)continue;try{const u=new URL(location.href);u.searchParams.set("tab",source);const response=await fetch(u,{credentials:"include"});if(!response.ok)throw new Error(String(response.status));const html=await response.text();games=games.concat(collect(new DOMParser().parseFromString(html,"text/html"),source));}catch(error){console.warn("Steam import: unable to read tab "+source,error);}}const unique=[...games.reduce((map,g)=>{if(!map.has(g.appid)||g.source==="perfect")map.set(g.appid,g);return map},new Map()).values()];const text=JSON.stringify({games:unique});const encoded=btoa(unescape(encodeURIComponent(text))).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");const tab=window.open(appOrigin+"/profile/"+sid+"/collect?kind=steam#steam-import-payload="+encoded,"_blank");if(!tab)alert("Permita pop-ups para abrir o resultado no Steam Achievement Analytics.");})()`;
       try {
         await navigator.clipboard.writeText(script);
         button.textContent = "Script copiado";
@@ -246,8 +252,10 @@
   const grid = document.querySelector(".game-grid");
   function sortCards() {
     if (!grid) return;
-    const direction = grid.dataset.sort.endsWith("_desc") ? -1 : 1;
     const field = grid.dataset.sort;
+    const descending =
+      field.endsWith("_desc") || field === "hours" || field === "recent";
+    const direction = descending ? -1 : 1;
     const cards = [...grid.querySelectorAll(".game-card")];
     const value = (card) =>
       field.startsWith("achievements")
