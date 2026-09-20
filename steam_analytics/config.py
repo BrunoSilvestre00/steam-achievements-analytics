@@ -1,7 +1,15 @@
 import os
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+SOURCE_ROOT = Path(__file__).resolve().parent.parent
+IS_FROZEN = bool(getattr(sys, "frozen", False))
+ROOT = Path(sys.executable).resolve().parent if IS_FROZEN else SOURCE_ROOT
+if IS_FROZEN:
+    DATA_ROOT = Path(os.environ.get("APPDATA", ROOT)) / "Steam Achievement Analytics"
+else:
+    DATA_ROOT = SOURCE_ROOT / "data"
+DATA_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def load_env(path=ROOT / ".env"):

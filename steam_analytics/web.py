@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .cache import RedisCache
-from .config import ROOT, load_env
+from .config import DATA_ROOT, load_env
 from .service import LibraryService
 from .steam import SteamClient, SteamError, valid_steamid
 from .storage import (
@@ -114,7 +114,7 @@ def create_app(*, service=None):
         allow_methods=["POST"],
         allow_headers=["Content-Type"],
     )
-    app.state.library = service or LibraryService(os.environ.get("STEAM_API_KEY", ""), ROOT / "data" / "steam.sqlite3")
+    app.state.library = service or LibraryService(os.environ.get("STEAM_API_KEY", ""), DATA_ROOT / "steam.sqlite3")
     app.state.cache = RedisCache(ttl=300)
     app.mount("/static", StaticFiles(directory=str(PACKAGE / "static")), name="static")
 

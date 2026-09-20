@@ -83,6 +83,48 @@ ficam em cache por 5 minutos; importações e atualizações invalidam as chaves
 relacionadas imediatamente. Se o Redis estiver indisponível fora do Compose, a
 aplicação continua funcionando sem cache.
 
+## Gerar o executável Windows
+
+Também é possível distribuir a aplicação sem Docker. A versão desktop usa o
+mesmo FastAPI, SQLite em `%APPDATA%\Steam Achievement Analytics` e um cache TTL
+em memória; nenhum Redis é necessário. Para gerar a pasta distribuível:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\scripts\build_windows.ps1
+```
+
+Para copiar automaticamente o `.env` atual para a pasta distribuível, use:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -ExportEnv
+```
+
+Use essa opção somente quando a pasta da build for permanecer privada, pois ela
+inclui a chave da Steam no pacote gerado.
+
+O executável será criado em
+`dist\SteamAchievementAnalytics\SteamAchievementAnalytics.exe`. Coloque um
+arquivo `.env` ao lado dele com `STEAM_API_KEY=...`; ao abrir, o servidor local
+será iniciado e o navegador será aberto automaticamente. O banco fica separado
+na pasta de dados do usuário, então atualizar o executável não apaga a biblioteca.
+O ícone do executável é gerado automaticamente a partir do favicon da aplicação.
+
+### Distribuir para outro Windows
+
+A build atual usa o modo `onedir`. Para distribuir, copie a pasta inteira
+`dist\SteamAchievementAnalytics`, não apenas o `.exe`, pois ela contém as DLLs,
+dependências e arquivos estáticos necessários para a aplicação funcionar.
+
+Ao lado de `SteamAchievementAnalytics.exe`, crie um arquivo `.env` com sua chave:
+
+```env
+STEAM_API_KEY=sua_chave_aqui
+```
+
+Depois, basta executar `SteamAchievementAnalytics.exe`. Os dados do usuário serão
+salvos em `%APPDATA%\Steam Achievement Analytics`, fora da pasta do executável.
+
 ## Funcionalidades
 
 - Tela dividida por `/profile/{steamid}`: cards à esquerda e detalhes à direita.
