@@ -94,6 +94,10 @@ em memória; nenhum Redis é necessário. Para gerar a pasta distribuível:
 .\scripts\build_windows.ps1
 ```
 
+Sem parâmetros, o script copia `.env.example` como `.env` para a pasta da build.
+Esse arquivo precisa ser preenchido com a chave da Steam antes de distribuir ou
+executar a aplicação.
+
 Para copiar automaticamente o `.env` atual para a pasta distribuível, use:
 
 ```powershell
@@ -104,9 +108,10 @@ Use essa opção somente quando a pasta da build for permanecer privada, pois el
 inclui a chave da Steam no pacote gerado.
 
 O executável será criado em
-`dist\SteamAchievementAnalytics\SteamAchievementAnalytics.exe`. Coloque um
-arquivo `.env` ao lado dele com `STEAM_API_KEY=...`; ao abrir, o servidor local
-será iniciado e o navegador será aberto automaticamente. O banco fica separado
+`dist\SteamAchievementAnalytics\SteamAchievementAnalytics.exe`. O script já
+coloca um arquivo `.env` ao lado dele; preencha `STEAM_API_KEY=...` antes de
+executar. O servidor local será iniciado e o navegador será aberto automaticamente.
+O banco fica separado
 na pasta de dados do usuário, então atualizar o executável não apaga a biblioteca.
 O ícone do executável é gerado automaticamente a partir do favicon da aplicação.
 
@@ -116,7 +121,7 @@ A build atual usa o modo `onedir`. Para distribuir, copie a pasta inteira
 `dist\SteamAchievementAnalytics`, não apenas o `.exe`, pois ela contém as DLLs,
 dependências e arquivos estáticos necessários para a aplicação funcionar.
 
-Ao lado de `SteamAchievementAnalytics.exe`, crie um arquivo `.env` com sua chave:
+Ao lado de `SteamAchievementAnalytics.exe`, confirme que o `.env` contém sua chave:
 
 ```env
 STEAM_API_KEY=sua_chave_aqui

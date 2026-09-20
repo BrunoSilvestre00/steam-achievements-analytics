@@ -30,6 +30,13 @@ if ($ExportEnv) {
     }
     Copy-Item -LiteralPath $envFile -Destination (Join-Path $buildDir ".env") -Force
     Write-Host "Arquivo .env copiado para a pasta da build."
+} else {
+    $exampleEnv = Join-Path $projectRoot ".env.example"
+    if (-not (Test-Path -LiteralPath $exampleEnv)) {
+        throw "O arquivo .env.example não existe na raiz do projeto."
+    }
+    Copy-Item -LiteralPath $exampleEnv -Destination (Join-Path $buildDir ".env") -Force
+    Write-Host "Arquivo .env.example copiado como .env na pasta da build."
 }
 
 Write-Host "Executável gerado em dist\SteamAchievementAnalytics\SteamAchievementAnalytics.exe"
