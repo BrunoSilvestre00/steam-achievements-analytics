@@ -46,7 +46,9 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       <input id="q" name="q" placeholder="Nome do jogo…" value="{{ q }}" maxlength="200">
       <label for="played">Status</label>
       <select id="played" name="played">
+        <option value="has_achievements" {% if played == 'has_achievements' %}selected{% endif %}>Possui troféus</option>
         <option value="all" {% if played == 'all' %}selected{% endif %}>Todos os jogos</option>
+        <option value="favorites" {% if played == 'favorites' %}selected{% endif %}>★ Favoritos</option>
         <option value="played" {% if played == 'played' %}selected{% endif %}>Já jogados</option>
         <option value="unplayed" {% if played == 'unplayed' %}selected{% endif %}>Não iniciados</option>
         <option value="not_platinum" {% if played == 'not_platinum' %}selected{% endif %}>Não platinados</option>
@@ -55,17 +57,19 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       </select>
       <label for="sort">Ordenar por</label>
       <select id="sort" name="sort">
-        <option value="name" {% if sort == 'name' %}selected{% endif %}>Nome: A → Z</option>
-        <option value="hours" {% if sort == 'hours' %}selected{% endif %}>Mais jogados</option>
-        <option value="recent" {% if sort == 'recent' %}selected{% endif %}>Mais recentes</option>
-        <option value="percent_desc" {% if sort == 'percent_desc' %}selected{% endif %}>Maior % de conquistas</option>
-        <option value="percent_asc" {% if sort == 'percent_asc' %}selected{% endif %}>Menor % de conquistas</option>
-        <option value="hltb_desc" {% if sort == 'hltb_desc' %}selected{% endif %}>Maior completionist HLTB</option>
-        <option value="hltb_asc" {% if sort == 'hltb_asc' %}selected{% endif %}>Menor completionist HLTB</option>
-        <option value="guide_difficulty_desc" {% if sort == 'guide_difficulty_desc' %}selected{% endif %}>Maior dificuldade do guia</option>
-        <option value="guide_difficulty_asc" {% if sort == 'guide_difficulty_asc' %}selected{% endif %}>Menor dificuldade do guia</option>
-        <option value="guide_hours_desc" {% if sort == 'guide_hours_desc' %}selected{% endif %}>Mais horas do guia</option>
-        <option value="guide_hours_asc" {% if sort == 'guide_hours_asc' %}selected{% endif %}>Menos horas do guia</option>
+        <option value="name" {% if sort == 'name' %}selected{% endif %}>↑ Nome: A → Z</option>
+        <option value="hours" {% if sort == 'hours' %}selected{% endif %}>↓ Mais jogados</option>
+        <option value="recent" {% if sort == 'recent' %}selected{% endif %}>↓ Mais recentes</option>
+        <option value="percent_desc" {% if sort == 'percent_desc' %}selected{% endif %}>↓ Maior % de conquistas</option>
+        <option value="percent_asc" {% if sort == 'percent_asc' %}selected{% endif %}>↑ Menor % de conquistas</option>
+        <option value="achievements_desc" {% if sort == 'achievements_desc' %}selected{% endif %}>↓ Mais conquistas (total)</option>
+        <option value="achievements_asc" {% if sort == 'achievements_asc' %}selected{% endif %}>↑ Menos conquistas (total)</option>
+        <option value="hltb_desc" {% if sort == 'hltb_desc' %}selected{% endif %}>↓ Maior completionist HLTB</option>
+        <option value="hltb_asc" {% if sort == 'hltb_asc' %}selected{% endif %}>↑ Menor completionist HLTB</option>
+        <option value="guide_difficulty_desc" {% if sort == 'guide_difficulty_desc' %}selected{% endif %}>↓ Maior dificuldade do guia</option>
+        <option value="guide_difficulty_asc" {% if sort == 'guide_difficulty_asc' %}selected{% endif %}>↑ Menor dificuldade do guia</option>
+        <option value="guide_hours_desc" {% if sort == 'guide_hours_desc' %}selected{% endif %}>↓ Mais horas do guia</option>
+        <option value="guide_hours_asc" {% if sort == 'guide_hours_asc' %}selected{% endif %}>↑ Menos horas do guia</option>
       </select>
     </form>
     <section class="external-tools" aria-label="Adicionar jogos">
@@ -171,12 +175,13 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
       data-sync-now="{{ 'true' if sync_now else 'false' }}"
     >
       {% for item in games %}
-      <a
-        class="game-card{% if selected and selected.appid == item.appid %} is-selected{% endif %}{% if item.progress.percent == 100 %} is-complete{% endif %}"
-        href="/profile/{{ library.steamid }}?{{ {'game': item.appid, 'q': q, 'sort': sort, 'played': played} | urlencode }}"
+      <article
+        class="game-card{% if selected and selected.appid == item.appid %} is-selected{% endif %}{% if item.progress.percent == 100 %} is-complete{% endif %}{% if item.progress.state == 'empty' %} has-no-achievements{% endif %}"
         data-game="{{ item.appid }}"
+        data-favorite="{{ 'true' if item.is_favorite else 'false' }}"
         data-game-name="{{ item.name }}"
         data-percent="{{ item.progress.percent if item.progress.percent is not none else '' }}"
+        data-achievements-total="{{ item.progress.total if item.progress.total is not none else '' }}"
         data-hours="{{ item.playtime_forever if item.playtime_forever is not none else '' }}"
         data-recent="{{ item.rtime_last_played or '' }}"
         data-hltb="{{ item.hltb.get('completionist') if item.hltb and item.hltb.get('completionist') is not none else '' }}"
@@ -187,6 +192,8 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
         {% if selected and selected.appid == item.appid %}aria-current="true"{% endif %}
         aria-controls="game-modal"
       >
+        {% with favorite_game=item %}{% include "favorite_button.html" %}{% endwith %}
+        <a class="game-card-link" href="/profile/{{ library.steamid }}?{{ {'game': item.appid, 'q': q, 'sort': sort, 'played': played} | urlencode }}">
         <div class="card-art">
           <span class="art-fallback" aria-hidden="true">{{ item.name }}</span
           ><img
@@ -201,11 +208,14 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
             alt="100% concluído"
             width="64"
             height="64"
-          />{% endif %}<span class="selection-indicator" aria-hidden="true">✓</span>
+          />{% endif %}
         </div>
         <div class="card-info">
           <h3>{{ item.name }}</h3>
-          {% if item.source == 'family' %}<span class="game-source-tag family">FAMÍLIA</span>{% elif item.source == 'external' %}<span class="game-source-tag external">EXTERNO</span>{% endif %}
+          <div class="card-tags">
+            {% if item.source == 'family' %}<span class="game-source-tag family">FAMÍLIA</span>{% elif item.source == 'external' %}<span class="game-source-tag external">EXTERNO</span>{% endif %}
+            <span class="game-source-tag no-achievements-tag" data-no-achievements{% if item.progress.state != 'empty' %} hidden{% endif %}>SEM CONQUISTAS</span>
+          </div>
           <div class="card-micro">
             <span
               >{{ item.playtime_forever | hours }}{% if item.playtime_forever is
@@ -230,8 +240,10 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
           {% endif %}
           {% include "card_progress.html" %}
         </div>
-      </a>
+        </a>
+      </article>
       {% else %}
+      {% if played != 'favorites' %}
       <div class="empty">
         {% if library.game_count == 0 %}
         <h3>Nenhum jogo retornado pela Steam</h3>
@@ -241,7 +253,12 @@ Steam Analytics{% endblock %} {% block body_class %}workspace-page{% endblock %}
         <p><a href="/profile/{{ library.steamid }}">Limpar filtros</a></p>
         {% endif %}
       </div>
+      {% endif %}
       {% endfor %}
+      <div class="empty" data-favorites-empty hidden>
+        <h3>Nenhum favorito com esses filtros</h3>
+        <p>Marque a estrela na capa de um jogo para adicioná-lo aos favoritos.</p>
+      </div>
     </div>
   </main>
 </div>

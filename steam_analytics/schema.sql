@@ -70,6 +70,12 @@ CREATE TABLE IF NOT EXISTS hltb_data (
     error TEXT
 );
 
+CREATE TABLE IF NOT EXISTS game_favorites (
+    steamid TEXT NOT NULL REFERENCES libraries(steamid),
+    appid INTEGER NOT NULL REFERENCES games(appid),
+    PRIMARY KEY (steamid, appid)
+);
+
 CREATE TABLE IF NOT EXISTS trophy_guides (
     appid INTEGER PRIMARY KEY REFERENCES games(appid),
     url TEXT NOT NULL,
@@ -77,6 +83,7 @@ CREATE TABLE IF NOT EXISTS trophy_guides (
     playthroughs INTEGER,
     hours REAL,
     hours_text TEXT,
+    trophy_count INTEGER,
     imported_at TEXT NOT NULL,
     error TEXT
 );

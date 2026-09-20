@@ -75,7 +75,13 @@
       const card = cards.get(game.appid);
       if (!card) continue;
       card.dataset.percent = game.percent === null ? "" : String(game.percent);
+      card.dataset.achievementsTotal =
+        game.total == null ? "" : String(game.total);
       card.classList.toggle("is-complete", game.percent === 100);
+      const noAchievements = game.state === "empty";
+      card.classList.toggle("has-no-achievements", noAchievements);
+      const noAchievementsTag = card.querySelector("[data-no-achievements]");
+      if (noAchievementsTag) noAchievementsTag.hidden = !noAchievements;
       const container = card.querySelector(".card-progress");
       container.dataset.progressState = game.state;
       card.querySelector("[data-percent-label]").textContent =
@@ -102,7 +108,7 @@
       recentList.replaceChildren(
         ...completeCards.slice(0, 6).map((card) => {
           const link = document.createElement("a");
-          link.href = card.href;
+          link.href = card.querySelector(".game-card-link").href;
           link.title = card.dataset.gameName;
           const image = document.createElement("img");
           image.src = `https://cdn.akamai.steamstatic.com/steam/apps/${card.dataset.game}/library_600x900_2x.jpg`;

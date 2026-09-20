@@ -1,6 +1,7 @@
 {% if selected %}
 <article class="game-detail-content{% if achievements and achievements.complete %} is-complete{% endif %}" data-selected-game="{{ selected.appid }}" data-hltb-completionist="{{ hltb.completionist if hltb and hltb.completionist is not none else '' }}" data-hltb-error="{{ 'true' if hltb and hltb.error else 'false' }}">
   <div class="detail-art">
+    {% with favorite_game=selected %}{% include "favorite_button.html" %}{% endwith %}
     <span class="art-fallback" aria-hidden="true">{{ selected.name }}</span
     ><img
       src="https://cdn.akamai.steamstatic.com/steam/apps/{{ selected.appid }}/header.jpg"
@@ -13,7 +14,7 @@
       alt="100% concluído"
       width="112"
       height="112"
-    />{% endif %}<span class="detail-art-label">{% if achievements and achievements.complete %}PLATINA CONCLUÍDA{% else %}SEU PRÓXIMO 100%{% endif %}</span>
+    />{% endif %}<span class="detail-art-label"><span>{% if achievements and achievements.complete %}PLATINA CONCLUÍDA{% else %}SEU PRÓXIMO 100%{% endif %}</span><span class="detail-favorite-tag" data-favorite-tag="{{ selected.appid }}"{% if not selected.is_favorite %} hidden{% endif %}>FAVORITO</span></span>
   </div>
   <div class="detail-body">
     <div class="detail-kicker">
@@ -88,6 +89,24 @@
       <p class="detail-note">{{ achievements.error }}</p>
       {% endif %}
     </section>
+    {% set requirements = trophy_guide | platinum_requirements(achievements) %}
+    {% set trophy_count_diff = trophy_guide | trophy_count_difference(achievements) %}
+    {% if requirements.no_online or requirements.no_missable %}
+    <div class="platinum-requirements" aria-label="Características para a platina">
+      {% if requirements.no_online %}
+      <div class="platinum-requirement" data-no-online>
+        <span class="requirement-check" aria-hidden="true">✓</span>
+        <div><strong>Não possui online</strong><small>{{ requirements.source }}</small></div>
+      </div>
+      {% endif %}
+      {% if requirements.no_missable %}
+      <div class="platinum-requirement" data-no-missable>
+        <span class="requirement-check" aria-hidden="true">✓</span>
+        <div><strong>Não possui troféus perdíveis</strong><small>Trophy Guide</small></div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
     <section class="planning-section" aria-labelledby="planning-title">
       <div class="detail-section-heading">
         <h3 id="planning-title">Planeje a platina</h3>
@@ -165,6 +184,11 @@
           <small>Para conquistar tudo</small>
         </div>
       </div>
+      {% if trophy_count_diff %}
+      <p class="trophy-count-tip{% if trophy_count_diff.platinum_only %} trophy-count-tip-platinum{% endif %}" role="status">
+        {% if trophy_count_diff.platinum_only %}<strong>Platinas separadas:</strong> a PlayStation tem um troféu a mais ({{ trophy_count_diff.guide_count }} contra {{ trophy_count_diff.steam_count }} na Steam). Esse troféu adicional é a platina da versão PlayStation.{% else %}<strong>Contagem diferente:</strong> o guia registra {{ trophy_count_diff.guide_count }} troféus na PlayStation e a Steam registra {{ trophy_count_diff.steam_count }} conquistas. {{ trophy_count_diff.more }} tem {{ trophy_count_diff.difference }} a mais nesta versão.{% endif %}
+      </p>
+      {% endif %}
       <p class="guide-placeholder">
         <a href="{{ trophy_guide.url }}" target="_blank" rel="noopener noreferrer">Abrir guia no PSNProfiles ↗</a>
       </p>
@@ -212,7 +236,7 @@
           <span class="muted">{{ achievements.unlocked }}/{{ achievements.total }}</span>
         </div>
       </div>
-      {% if trophy_guide and trophy_guide.tags %}<div class="achievement-guide-tags" aria-label="Características do guia">{% for tag in (trophy_guide.tags_pt or trophy_guide.tags) %}<span class="guide-tag {% if tag|lower in ['collectable', 'collectible', 'colecionável', 'colecionavel', 'time limited', 'tempo limitado'] %}guide-tag-alert{% elif tag|lower in ['missable', 'perdível', 'perdivel', 'buggy', 'com bugs'] %}guide-tag-warning{% elif tag|lower in ['unmissable', 'imperdível', 'imperdivel', 'story', 'história', 'historia'] %}guide-tag-safe{% endif %}">{{ tag }}</span>{% endfor %}</div>{% endif %}
+      {% if (trophy_guide and trophy_guide.tags) or trophy_count_diff %}<div class="achievement-guide-tags" aria-label="Características do guia">{% for tag in (trophy_guide.tags_pt or trophy_guide.tags) %}<span class="guide-tag {% if tag|lower in ['collectable', 'collectible', 'colecionável', 'colecionavel', 'time limited', 'tempo limitado'] %}guide-tag-alert{% elif tag|lower in ['missable', 'perdível', 'perdivel', 'buggy', 'com bugs'] %}guide-tag-warning{% elif tag|lower in ['unmissable', 'imperdível', 'imperdivel', 'story', 'história', 'historia'] %}guide-tag-safe{% endif %}">{{ tag }}</span>{% endfor %}{% if trophy_count_diff %}<span class="guide-tag {% if trophy_count_diff.platinum_only %}guide-tag-platinum{% else %}guide-tag-alert{% endif %}">{% if trophy_count_diff.platinum_only %}PLATINA EXCLUSIVA{% else %}CONTAGENS DIFERENTES{% endif %}</span>{% endif %}</div>{% endif %}
       <div class="achievement-list">
         {% for achievement in achievements['items'] | sort(attribute='unlocked', reverse=true) %}
         <div class="achievement-row" data-achievement-row data-unlocked="{{ 'true' if achievement.unlocked else 'false' }}" data-online="{{ 'true' if achievement.is_online else 'false' }}">

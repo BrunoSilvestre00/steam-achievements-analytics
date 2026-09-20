@@ -22,16 +22,17 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='workspace.css') }}?v=31"
+      href="{{ url_for('static', path='workspace.css') }}?v=43"
     />
     <script
-      src="{{ url_for('static', path='workspace.js') }}?v=40"
+      src="{{ url_for('static', path='workspace.js') }}?v=49"
       defer
     ></script>
     <script
-      src="{{ url_for('static', path='progress.js') }}?v=10"
+      src="{{ url_for('static', path='progress.js') }}?v=13"
       defer
     ></script>
+    <script src="{{ url_for('static', path='favorites.js') }}?v=1" defer></script>
   </head>
   <body class="{% block body_class %}{% endblock %}">
     <header class="site-header">

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import Body, FastAPI, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,8 +34,10 @@ from .storage import (
     load_progress,
     load_trophy_guide,
     load_trophy_guide_summary,
+    set_game_favorite,
     toggle_checklist_item,
 )
+from .trophy import platinum_requirements, trophy_count_difference
 
 PACKAGE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(PACKAGE / "templates"))
@@ -44,6 +46,8 @@ templates.env.filters["hours"] = lambda value: (
 )
 templates.env.filters["timestamp"] = lambda value: datetime.fromisoformat(value).strftime("%d/%m/%Y às %H:%M UTC")
 templates.env.filters["percentage"] = lambda value: f"{value:g}".replace(".", ",")
+templates.env.filters["platinum_requirements"] = platinum_requirements
+templates.env.filters["trophy_count_difference"] = trophy_count_difference
 
 
 def sort_by_progress(games, direction):
@@ -180,10 +184,23 @@ def create_app(*, service=None):
         steamid: str,
         q: str = Query(default="", max_length=200),
         sort: Literal[
-            "name", "hours", "recent", "percent_desc", "percent_asc", "hltb_desc", "hltb_asc",
-            "guide_difficulty_desc", "guide_difficulty_asc", "guide_hours_desc", "guide_hours_asc"
+            "name",
+            "hours",
+            "recent",
+            "percent_desc",
+            "percent_asc",
+            "hltb_desc",
+            "hltb_asc",
+            "guide_difficulty_desc",
+            "guide_difficulty_asc",
+            "guide_hours_desc",
+            "guide_hours_asc",
+            "achievements_desc",
+            "achievements_asc",
         ] = "percent_desc",
-        played: Literal["all", "played", "unplayed", "platinum", "not_platinum", "near_platinum"] = "all",
+        played: Literal[
+            "has_achievements", "all", "played", "unplayed", "platinum", "not_platinum", "near_platinum", "favorites"
+        ] = "has_achievements",
         game: int | None = Query(default=None, gt=0),
         updated: str = Query(default="", max_length=20),
         notice: str = Query(default="", max_length=240),
@@ -227,7 +244,9 @@ def create_app(*, service=None):
         # A busca por nome acontece no navegador para evitar recarregar a página
         # e manter toda a biblioteca disponível para o filtro instantâneo.
         games = list(all_games)
-        if played == "played":
+        if played == "has_achievements":
+            games = [g for g in games if (g["progress"].get("total") or 0) > 0]
+        elif played == "played":
             games = [g for g in games if (g["playtime_forever"] or 0) > 0]
         elif played == "unplayed":
             games = [g for g in games if g["playtime_forever"] == 0]
@@ -237,6 +256,8 @@ def create_app(*, service=None):
             games = [g for g in games if g["progress"]["percent"] != 100]
         elif played == "near_platinum":
             games = [g for g in games if g["progress"]["percent"] is not None and 70 <= g["progress"]["percent"] < 100]
+        elif played == "favorites":
+            games = [g for g in games if g.get("is_favorite")]
         if sort in ("percent_desc", "percent_asc"):
             games = sort_by_progress(games, sort)
         elif sort in ("hltb_desc", "hltb_asc"):
@@ -339,6 +360,17 @@ def create_app(*, service=None):
             },
         )
 
+    @app.put("/api/profile/{steamid}/games/{appid}/favorite")
+    def game_favorite(steamid: str, appid: int, favorite: bool = Body(embed=True, strict=True)):
+        if not valid_steamid(steamid):
+            raise SteamError("SteamID inválido.", 422)
+        try:
+            set_game_favorite(app.state.library.database, steamid, appid, favorite)
+        except ValueError as error:
+            raise SteamError(str(error), 404) from error
+        app.state.cache.invalidate(f"profile:{steamid}")
+        return {"appid": appid, "is_favorite": favorite}
+
     @app.get("/profile/{steamid}/games/{appid}", response_class=HTMLResponse, include_in_schema=False)
     def game_panel(request: Request, steamid: str, appid: int):
         library = app.state.library.get_library(steamid)
@@ -437,7 +469,10 @@ def create_app(*, service=None):
                 html = raw_html.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as error:
             raise SteamError("O HTML recebido do guia é inválido.", 422) from error
-        result = app.state.library.trophy_guide_html(appid, payload.get("url", ""), html)
+        guide_url = str(payload.get("url", "")).strip()
+        if not guide_url:
+            raise SteamError("A URL da página do Trophy Guide não foi enviada.", 422)
+        result = app.state.library.trophy_guide_html(appid, guide_url, html)
         app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}")
         return result
 
@@ -448,9 +483,15 @@ def create_app(*, service=None):
         mode: Literal["all", "steam", "hltb", "perfect"] = Form("all"),
     ):
         app.state.library.begin_refresh(steamid)
+        cancelled_target = (
+            f"/profile/{steamid}?notice={quote('Atualização cancelada. Os dados já salvos foram mantidos.')}"
+        )
         perfect_notice = ""
         if mode in ("all", "steam"):
             library = app.state.library.get_library(steamid, refresh=True)
+            if app.state.library.refresh_cancelled(steamid):
+                app.state.library.finish_refresh(steamid)
+                return RedirectResponse(cancelled_target, status_code=303)
             if library["warning"]:
                 app.state.library.finish_refresh(steamid)
                 return render(request, "error.html", {"error": library["warning"], "steamid": steamid}, 502)
@@ -458,9 +499,15 @@ def create_app(*, service=None):
                 imported = app.state.library.import_perfect_games(steamid)
                 if imported["added"]:
                     perfect_notice = f"{imported['added']} platinas encontradas fora da biblioteca oficial."
+                if app.state.library.refresh_cancelled(steamid):
+                    app.state.library.finish_refresh(steamid)
+                    return RedirectResponse(cancelled_target, status_code=303)
             except Exception:
                 # A página pública pode estar indisponível; isso não deve invalidar a atualização oficial.
                 perfect_notice = ""
+            if app.state.library.refresh_cancelled(steamid):
+                app.state.library.finish_refresh(steamid)
+                return RedirectResponse(cancelled_target, status_code=303)
         elif mode == "perfect":
             try:
                 imported = app.state.library.import_perfect_games(steamid)
@@ -468,12 +515,24 @@ def create_app(*, service=None):
                     perfect_notice = f"{imported['added']} platinas encontradas fora da biblioteca oficial."
                 else:
                     perfect_notice = "Nenhuma platina nova foi encontrada na aba pública da Steam."
+                if app.state.library.refresh_cancelled(steamid):
+                    app.state.library.finish_refresh(steamid)
+                    return RedirectResponse(cancelled_target, status_code=303)
             except Exception as error:
                 perfect_notice = f"Não foi possível consultar as platinas públicas: {error}"
+            if app.state.library.refresh_cancelled(steamid):
+                app.state.library.finish_refresh(steamid)
+                return RedirectResponse(cancelled_target, status_code=303)
         if mode == "all":
+            if app.state.library.refresh_cancelled(steamid):
+                app.state.library.finish_refresh(steamid)
+                return RedirectResponse(cancelled_target, status_code=303)
             app.state.library.hltb_progress(steamid, update=True, limit=5)
         elif mode == "hltb":
             app.state.library.hltb_progress(steamid, update=True, limit=20)
+        if app.state.library.refresh_cancelled(steamid):
+            app.state.library.finish_refresh(steamid)
+            return RedirectResponse(cancelled_target, status_code=303)
         app.state.cache.invalidate(f"profile:{steamid}", f"progress:{steamid}", f"hltb:{steamid}")
         target = f"/profile/{steamid}"
         params = []
@@ -560,9 +619,9 @@ def create_app(*, service=None):
         return result
 
     @app.get("/api/profile/{steamid}/hltb")
-    def hltb_status(steamid: str):
+    def hltb_status(steamid: str, fresh: bool = Query(default=False)):
         key = f"hltb:{steamid}"
-        cached = app.state.cache.get(key)
+        cached = app.state.cache.get(key) if not fresh else None
         if cached is not None:
             return cached
         result = app.state.library.hltb_progress(steamid)
@@ -571,9 +630,14 @@ def create_app(*, service=None):
 
     @app.post("/api/profile/{steamid}/hltb")
     def hltb_update(steamid: str, limit: int = Query(default=20, ge=1, le=20)):
-        result = app.state.library.hltb_progress(steamid, update=True, limit=limit)
-        app.state.cache.invalidate(f"hltb:{steamid}", f"profile:{steamid}")
-        return result
+        app.state.library.begin_refresh(steamid)
+        try:
+            result = app.state.library.hltb_progress(steamid, update=True, limit=limit)
+            app.state.cache.invalidate(f"hltb:{steamid}", f"profile:{steamid}")
+            return result
+        finally:
+            if not app.state.library.refresh_cancelled(steamid):
+                app.state.library.finish_refresh(steamid)
 
     return app
 

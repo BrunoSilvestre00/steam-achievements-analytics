@@ -198,9 +198,7 @@ class SteamClient:
 
     def store_game(self, appid):
         appid = int(appid)
-        response = self._get_external_json(
-            f"https://store.steampowered.com/api/appdetails?appids={appid}&l=brazilian"
-        )
+        response = self._get_external_json(f"https://store.steampowered.com/api/appdetails?appids={appid}&l=brazilian")
         entry = response.get(str(appid), {})
         data = entry.get("data") if entry.get("success") else None
         if not isinstance(data, dict):
@@ -218,6 +216,28 @@ class SteamClient:
         if not isinstance(name, str) or not name.strip():
             raise SteamError("A Steam não disponibilizou o nome deste perfil.")
         return {"steamid": steamid, "personaname": name.strip()}
+
+    def has_achievements(self, appid):
+        """Check store metadata independently of the player's privacy settings."""
+        payload = self._get_external_json(
+            f"https://store.steampowered.com/api/appdetails?appids={int(appid)}&l=brazilian"
+        )
+        entry = payload.get(str(appid))
+        if not isinstance(entry, dict) or entry.get("success") is not True:
+            return None
+        data = entry.get("data")
+        if not isinstance(data, dict):
+            return None
+        achievements = data.get("achievements")
+        if isinstance(achievements, dict) and type(achievements.get("total")) is int:
+            if achievements["total"] > 0:
+                return True
+        categories = data.get("categories")
+        if not isinstance(categories, list) or not categories:
+            return None
+        if any(not isinstance(item, dict) or type(item.get("id")) is not int for item in categories):
+            return None
+        return any(item["id"] == 22 for item in categories)
 
     def single_game_playtime(self, steamid, appid):
         response = self._get(

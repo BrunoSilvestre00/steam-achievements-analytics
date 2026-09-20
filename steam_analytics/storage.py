@@ -19,7 +19,7 @@ def connect(path):
     db.execute("PRAGMA foreign_keys = ON")
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 13:
+        if version > 15:
             raise sqlite3.DatabaseError("Versão do banco não suportada")
         if version == 0:
             with db:
@@ -112,7 +112,9 @@ def connect(path):
             with db:
                 # Corrige registros criados quando o campo hidden vinha como texto
                 # e era interpretado incorretamente como True.
-                db.execute("UPDATE achievement_definitions SET is_hidden=0 WHERE is_hidden=1 AND COALESCE(description, '') = ''")
+                db.execute(
+                    "UPDATE achievement_definitions SET is_hidden=0 WHERE is_hidden=1 AND COALESCE(description, '') = ''"
+                )
                 db.execute("PRAGMA user_version = 10")
         if version < 11:
             with db:
@@ -134,6 +136,21 @@ def connect(path):
                         db.execute(f"ALTER TABLE trophy_guides ADD COLUMN {name} TEXT")
                 db.execute("PRAGMA user_version = 13")
                 version = 13
+        if version < 14:
+            with db:
+                db.execute("""CREATE TABLE IF NOT EXISTS game_favorites (
+                    steamid TEXT NOT NULL REFERENCES libraries(steamid),
+                    appid INTEGER NOT NULL REFERENCES games(appid),
+                    PRIMARY KEY (steamid, appid)
+                )""")
+                db.execute("PRAGMA user_version = 14")
+                version = 14
+        if version < 15:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(trophy_guides)")}
+                if "trophy_count" not in columns:
+                    db.execute("ALTER TABLE trophy_guides ADD COLUMN trophy_count INTEGER")
+                db.execute("PRAGMA user_version = 15")
         yield db
     finally:
         db.close()
@@ -148,15 +165,26 @@ def load_library(path, steamid):
         if library is None:
             return None
         games = [
-            {**normalize_game(dict(row)), "source": row["source"] or "steam"}
+            {**normalize_game(dict(row)), "source": row["source"] or "steam", "is_favorite": bool(row["is_favorite"])}
             for row in db.execute(
-                """SELECT g.appid, g.name, lg.playtime_forever, lg.playtime_2weeks, lg.rtime_last_played, lg.source
+                """SELECT g.appid, g.name, lg.playtime_forever, lg.playtime_2weeks, lg.rtime_last_played, lg.source,
+                EXISTS(SELECT 1 FROM game_favorites f WHERE f.steamid = lg.steamid AND f.appid = lg.appid) AS is_favorite
                FROM library_games lg JOIN games g ON g.appid = lg.appid
                WHERE lg.steamid = ? ORDER BY g.name COLLATE NOCASE, g.appid""",
                 (steamid,),
             )
         ]
         return {**dict(library), "games": games}
+
+
+def set_game_favorite(path, steamid, appid, favorite):
+    with connect(path) as db, db:
+        if not db.execute("SELECT 1 FROM library_games WHERE steamid = ? AND appid = ?", (steamid, appid)).fetchone():
+            raise ValueError("Esse jogo não está na biblioteca importada.")
+        if favorite:
+            db.execute("INSERT OR IGNORE INTO game_favorites (steamid, appid) VALUES (?, ?)", (steamid, appid))
+        else:
+            db.execute("DELETE FROM game_favorites WHERE steamid = ? AND appid = ?", (steamid, appid))
 
 
 def save_library(path, steamid, games, imported_at, personaname=None):
@@ -204,7 +232,17 @@ def save_external_games(path, steamid, games, source):
                 (steamid, appid, playtime_forever, playtime_2weeks, rtime_last_played, source)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(steamid, appid) DO UPDATE SET source=excluded.source""",
-            [(steamid, game["appid"], game.get("playtime_forever"), game.get("playtime_2weeks"), game.get("rtime_last_played"), source) for game in games],
+            [
+                (
+                    steamid,
+                    game["appid"],
+                    game.get("playtime_forever"),
+                    game.get("playtime_2weeks"),
+                    game.get("rtime_last_played"),
+                    source,
+                )
+                for game in games
+            ],
         )
         db.execute(
             "UPDATE libraries SET game_count=(SELECT count(*) FROM library_games WHERE steamid=?), imported_at=? WHERE steamid=?",
@@ -243,7 +281,16 @@ def save_achievements(path, steamid, appid, result, imported_at):
             icon_gray=COALESCE(excluded.icon_gray, achievement_definitions.icon_gray),
             is_online=excluded.is_online, is_hidden=excluded.is_hidden""",
             [
-                (appid, item["apiname"], item["name"], item["description"], item.get("icon"), item.get("icon_gray"), int(item.get("is_online", False)), int(item.get("is_hidden", False)))
+                (
+                    appid,
+                    item["apiname"],
+                    item["name"],
+                    item["description"],
+                    item.get("icon"),
+                    item.get("icon_gray"),
+                    int(item.get("is_online", False)),
+                    int(item.get("is_hidden", False)),
+                )
                 for item in result["items"]
             ],
         )
@@ -326,7 +373,12 @@ def load_achievements(path, steamid, appid):
         if not sync:
             return None
         items = [
-            {**dict(row), "unlocked": bool(row["unlocked"]), "is_online": bool(row["is_online"]), "is_hidden": bool(row["is_hidden"])}
+            {
+                **dict(row),
+                "unlocked": bool(row["unlocked"]),
+                "is_online": bool(row["is_online"]),
+                "is_hidden": bool(row["is_hidden"]),
+            }
             for row in db.execute(
                 """
             SELECT d.apiname, d.name, d.description, d.icon, d.icon_gray, d.is_online, d.is_hidden, p.unlocked
@@ -489,7 +541,7 @@ def load_trophy_guide_summary(path, appids):
         return {
             row["appid"]: dict(row)
             for row in db.execute(
-                f"SELECT appid, difficulty, playthroughs, hours, hours_text, error FROM trophy_guides WHERE appid IN ({marks})",
+                f"SELECT appid, difficulty, playthroughs, hours, hours_text, trophy_count, error FROM trophy_guides WHERE appid IN ({marks})",
                 tuple(appids),
             )
         }
@@ -499,10 +551,11 @@ def save_trophy_guide(path, appid, data):
     with connect(path) as db, db:
         db.execute(
             """INSERT INTO trophy_guides
-            (appid, url, difficulty, playthroughs, hours, hours_text, tags_json, roadmap_json, trophies_json, imported_at, error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            (appid, url, difficulty, playthroughs, hours, hours_text, trophy_count, tags_json, roadmap_json, trophies_json, imported_at, error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
             ON CONFLICT(appid) DO UPDATE SET url=excluded.url, difficulty=excluded.difficulty,
             playthroughs=excluded.playthroughs, hours=excluded.hours, hours_text=excluded.hours_text,
+            trophy_count=excluded.trophy_count,
             tags_json=excluded.tags_json, roadmap_json=excluded.roadmap_json, trophies_json=excluded.trophies_json,
             imported_at=excluded.imported_at, error=NULL""",
             (
@@ -512,6 +565,7 @@ def save_trophy_guide(path, appid, data):
                 data.get("playthroughs"),
                 data.get("hours"),
                 data.get("hours_text"),
+                data.get("trophy_count"),
                 json.dumps(data.get("tags", []), ensure_ascii=False),
                 json.dumps(data.get("roadmap", []), ensure_ascii=False),
                 json.dumps(data.get("trophies", []), ensure_ascii=False),
@@ -524,8 +578,8 @@ def save_trophy_guide_error(path, appid, data):
     with connect(path) as db, db:
         db.execute(
             """INSERT INTO trophy_guides
-            (appid, url, difficulty, playthroughs, hours, hours_text, tags_json, roadmap_json, trophies_json, imported_at, error)
-            VALUES (?, ?, NULL, NULL, NULL, NULL, '[]', '[]', '[]', ?, ?)
+            (appid, url, difficulty, playthroughs, hours, hours_text, trophy_count, tags_json, roadmap_json, trophies_json, imported_at, error)
+            VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, '[]', '[]', '[]', ?, ?)
             ON CONFLICT(appid) DO UPDATE SET url=excluded.url, imported_at=excluded.imported_at,
             error=excluded.error""",
             (appid, data["url"], data["imported_at"], data["error"]),

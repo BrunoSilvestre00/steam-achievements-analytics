@@ -43,9 +43,7 @@ def mark_online_achievements(data):
             {
                 **item,
                 "is_online": bool(
-                    ONLINE_ACHIEVEMENT_HINTS.search(
-                        f"{item.get('name', '')} {item.get('description', '')}"
-                    )
+                    ONLINE_ACHIEVEMENT_HINTS.search(f"{item.get('name', '')} {item.get('description', '')}")
                 ),
             }
             for item in data.get("items", [])
@@ -108,7 +106,12 @@ class LibraryService:
             raise SteamError("Importe a biblioteca antes de consultar os tempos.", 404)
         appids = [game["appid"] for game in library["games"]]
         saved = load_hltb_summary(self.database, appids)
-        missing = [game for game in library["games"] if game["appid"] not in saved]
+        missing = [
+            game
+            for game in library["games"]
+            if game["appid"] not in saved or saved[game["appid"]].get("error") is not None
+        ]
+        processed = 0
         if update:
             with self._hltb_lock:
                 # Mantemos as consultas sequenciais para reduzir a chance de bloqueio,
@@ -117,13 +120,15 @@ class LibraryService:
                     if self.refresh_cancelled(steamid):
                         break
                     self.hltb(game["appid"], game["name"])
+                    processed += 1
             saved = load_hltb_summary(self.database, appids)
         return {
             "games": [
                 {"appid": appid, "completionist": row.get("completionist"), "error": row.get("error")}
                 for appid, row in saved.items()
             ],
-            "pending": len([appid for appid in appids if appid not in saved]),
+            "pending": len([appid for appid in appids if appid not in saved or saved[appid].get("error") is not None]),
+            "processed": processed,
         }
 
     def trophy_guide(self, appid, url, *, refresh=False):
@@ -140,6 +145,7 @@ class LibraryService:
             return {**result, "appid": appid}
 
     def trophy_guide_html(self, appid, url, html):
+        url = str(url or "").strip()
         try:
             result = parse_trophy_guide(url, html, translate=True)
             save_trophy_guide(self.database, appid, result)
@@ -185,6 +191,7 @@ class LibraryService:
             and (now - datetime.fromisoformat(cached["imported_at"])).total_seconds() < 300
         ):
             return cached
+        client = None
         try:
             client = self.client or SteamClient(self.api_key)
             result = client.player_achievements(steamid, appid)
@@ -210,6 +217,25 @@ class LibraryService:
                 if cached
                 else {"available": False, "error": str(error)}
             )
+            # A private/unavailable player response does not mean zero trophies.
+            # Confirm that the store lists no Steam achievement support, and
+            # never discard previously collected achievements on that basis.
+            if not (cached and cached.get("total")) and isinstance(client, SteamClient):
+                try:
+                    if client.has_achievements(appid) is False:
+                        result = {
+                            "available": True,
+                            "total": 0,
+                            "unlocked": 0,
+                            "percent": None,
+                            "complete": False,
+                            "items": [],
+                            "error": None,
+                            "imported_at": now.isoformat(),
+                        }
+                        save_achievements(self.database, steamid, appid, result, now.isoformat())
+                except SteamError:
+                    pass
         with self._achievement_lock:
             self._achievements[key] = (monotonic(), result)
             self._achievements.move_to_end(key)

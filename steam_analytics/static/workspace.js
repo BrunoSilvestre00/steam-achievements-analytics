@@ -8,17 +8,32 @@
   const guideHash = window.location.hash.match(/^#trophy-guide-import=(.+)$/);
   if (guideHash) {
     try {
-      const normalized = guideHash[1].replaceAll("-", "+").replaceAll("_", "/") + "===".slice((guideHash[1].length + 3) % 4);
-      const bytes = Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
+      const normalized =
+        guideHash[1].replaceAll("-", "+").replaceAll("_", "/") +
+        "===".slice((guideHash[1].length + 3) % 4);
+      const bytes = Uint8Array.from(atob(normalized), (char) =>
+        char.charCodeAt(0),
+      );
       const payload = JSON.parse(new TextDecoder().decode(bytes));
       const pageUrl = new URL(window.location.href);
       const sid = pageUrl.pathname.split("/")[2];
       const appid = pageUrl.searchParams.get("game");
       const closeAfterImport = pageUrl.searchParams.get("close") === "1";
       pageUrl.hash = "game-modal";
-      history.replaceState({}, "", `${pageUrl.pathname}${pageUrl.search}${pageUrl.hash}`);
-      fetch(`/api/profile/${sid}/games/${appid}/trophy-guide/import`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-        .then((response) => { if (!response.ok) throw new Error("Falha ao importar o guia"); return response.json(); })
+      history.replaceState(
+        {},
+        "",
+        `${pageUrl.pathname}${pageUrl.search}${pageUrl.hash}`,
+      );
+      fetch(`/api/profile/${sid}/games/${appid}/trophy-guide/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error("Falha ao importar o guia");
+          return response.json();
+        })
         .then(() => {
           if (closeAfterImport) {
             window.setTimeout(() => window.close(), 800);
@@ -26,23 +41,43 @@
           }
           window.location.reload();
         })
-        .catch(() => alert("N\u00e3o foi poss\u00edvel importar o guia. Abra o modal novamente e tente copiar o script."));
-    } catch { alert("O resultado do guia n\u00e3o p\u00f4de ser lido."); }
+        .catch(() =>
+          alert(
+            "N\u00e3o foi poss\u00edvel importar o guia. Abra o modal novamente e tente copiar o script.",
+          ),
+        );
+    } catch {
+      alert("O resultado do guia n\u00e3o p\u00f4de ser lido.");
+    }
   }
   const autoGuideForm = document.querySelector("[data-auto-guide-import]");
   if (autoGuideForm) {
     const guideUrl = new URL(window.location.href);
     guideUrl.searchParams.delete("trophy_guide_import");
-    history.replaceState({}, "", `${guideUrl.pathname}${guideUrl.search}${guideUrl.hash}`);
+    history.replaceState(
+      {},
+      "",
+      `${guideUrl.pathname}${guideUrl.search}${guideUrl.hash}`,
+    );
     const field = autoGuideForm.querySelector("#guide-import-payload");
-    const progress = autoGuideForm.querySelector("[data-guide-import-progress]");
-    fetch(autoGuideForm.action, { method: "POST", headers: { "Content-Type": "application/json" }, body: field.value })
+    const progress = autoGuideForm.querySelector(
+      "[data-guide-import-progress]",
+    );
+    fetch(autoGuideForm.action, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: field.value,
+    })
       .then((response) => {
         if (!response.ok) throw new Error("Falha ao importar o guia");
         return response.json();
       })
       .then(() => window.location.replace(guideUrl.toString()))
-      .catch(() => { if (progress) progress.textContent = "N\u00e3o foi poss\u00edvel importar o guia automaticamente."; });
+      .catch(() => {
+        if (progress)
+          progress.textContent =
+            "N\u00e3o foi poss\u00edvel importar o guia automaticamente.";
+      });
   }
   document.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-copy-guide-import]");
@@ -54,34 +89,48 @@
     const script = [
       "(async()=>{",
       "const bytes=new TextEncoder().encode(document.documentElement.outerHTML);",
-      "const compressed=await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream(\"gzip\"))).arrayBuffer();",
-      "let binary=\"\";new Uint8Array(compressed).forEach(byte=>binary+=String.fromCharCode(byte));",
-      "const data={url:location.href,html_b64:btoa(binary).replaceAll(\"+\",\"-\").replaceAll(\"/\",\"_\").replaceAll(\"=\",\"\")};",
-      "const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replaceAll(\"+\",\"-\").replaceAll(\"/\",\"_\").replaceAll(\"=\",\"\");",
-      "const target=\"http:\"+String.fromCharCode(47,47)+\"127.0.0.1:8000/profile/\"+",
+      'const compressed=await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();',
+      'let binary="";new Uint8Array(compressed).forEach(byte=>binary+=String.fromCharCode(byte));',
+      'const data={url:location.href,html_b64:btoa(binary).replaceAll("+","-").replaceAll("/","_").replaceAll("=","")};',
+      'const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");',
+      'const target="http:"+String.fromCharCode(47,47)+"127.0.0.1:8000/profile/"+',
       JSON.stringify(sid),
-      "+\"/collect?kind=trophy&game=\"+",
+      '+"/collect?kind=trophy&game="+',
       JSON.stringify(appid),
-      "+\"#trophy-guide-import=\"+encoded;",
-      "const tab=window.open(target,\"_blank\");",
-      "if(!tab)alert(\"Permita pop-ups para abrir o guia no Steam Achievement Analytics.\");",
+      '+"#trophy-guide-import="+encoded;',
+      'const tab=window.open(target,"_blank");',
+      'if(!tab)alert("Permita pop-ups para abrir o guia no Steam Achievement Analytics.");',
       "})()",
     ].join("");
     try {
       await navigator.clipboard.writeText(script);
       button.textContent = "Script copiado";
-      window.setTimeout(() => { button.textContent = "Copiar script de importa\u00e7\u00e3o"; }, 2500);
+      window.setTimeout(() => {
+        button.textContent = "Copiar script de importa\u00e7\u00e3o";
+      }, 2500);
     } catch {
-      window.prompt("Copie este script e execute no Console do PSNProfiles:", script);
+      window.prompt(
+        "Copie este script e execute no Console do PSNProfiles:",
+        script,
+      );
     }
   });
   const autoImportForm = document.querySelector("[data-auto-import]");
   if (autoImportForm) {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete("steam_import");
-    history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
-    const progress = autoImportForm.querySelector("[data-steam-import-progress]");
-    fetch(autoImportForm.action, { method: "POST", body: new FormData(autoImportForm) })
+    history.replaceState(
+      {},
+      "",
+      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+    );
+    const progress = autoImportForm.querySelector(
+      "[data-steam-import-progress]",
+    );
+    fetch(autoImportForm.action, {
+      method: "POST",
+      body: new FormData(autoImportForm),
+    })
       .then((response) => {
         if (!response.ok) throw new Error("Falha ao importar");
         window.location.replace(response.url);
@@ -89,18 +138,23 @@
       .catch(() => {
         if (progress) {
           progress.classList.add("is-error");
-          progress.querySelector("span").textContent = "N\u00e3o foi poss\u00edvel importar automaticamente. Use o bot\u00e3o abaixo.";
+          progress.querySelector("span").textContent =
+            "N\u00e3o foi poss\u00edvel importar automaticamente. Use o bot\u00e3o abaixo.";
         }
       });
   }
-  document.querySelectorAll("[data-import-fallback-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const form = button.parentElement?.querySelector("[data-import-fallback-form]");
-      if (!form) return;
-      form.hidden = !form.hidden;
-      button.setAttribute("aria-expanded", String(!form.hidden));
+  document
+    .querySelectorAll("[data-import-fallback-toggle]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const form = button.parentElement?.querySelector(
+          "[data-import-fallback-form]",
+        );
+        if (!form) return;
+        form.hidden = !form.hidden;
+        button.setAttribute("aria-expanded", String(!form.hidden));
+      });
     });
-  });
   document.querySelectorAll("[data-copy-steam-import]").forEach((button) => {
     button.addEventListener("click", async () => {
       const steamid = button.dataset.steamid;
@@ -108,9 +162,14 @@
       try {
         await navigator.clipboard.writeText(script);
         button.textContent = "Script copiado";
-        window.setTimeout(() => { button.textContent = "Copiar script"; }, 2500);
+        window.setTimeout(() => {
+          button.textContent = "Copiar script";
+        }, 2500);
       } catch {
-        window.prompt("Copie este script e execute no Console da Steam:", script);
+        window.prompt(
+          "Copie este script e execute no Console da Steam:",
+          script,
+        );
       }
     });
   });
@@ -126,7 +185,11 @@
   if (notice) {
     const noticeUrl = new URL(window.location.href);
     noticeUrl.searchParams.delete("notice");
-    history.replaceState({}, "", `${noticeUrl.pathname}${noticeUrl.search}${noticeUrl.hash}`);
+    history.replaceState(
+      {},
+      "",
+      `${noticeUrl.pathname}${noticeUrl.search}${noticeUrl.hash}`,
+    );
     window.setTimeout(() => notice.remove(), 10000);
   }
   function syncModalState() {
@@ -187,19 +250,21 @@
     const field = grid.dataset.sort;
     const cards = [...grid.querySelectorAll(".game-card")];
     const value = (card) =>
-      field.startsWith("percent")
-        ? card.dataset.percent
-        : field.startsWith("hltb")
-          ? card.dataset.hltb
-          : field.startsWith("guide_difficulty")
-            ? card.dataset.guideDifficulty
-            : field.startsWith("guide_hours")
-              ? card.dataset.guideHours
-          : field === "hours"
-            ? card.dataset.hours
-            : field === "recent"
-              ? card.dataset.recent
-              : card.dataset.gameName.toLocaleLowerCase();
+      field.startsWith("achievements")
+        ? card.dataset.achievementsTotal
+        : field.startsWith("percent")
+          ? card.dataset.percent
+          : field.startsWith("hltb")
+            ? card.dataset.hltb
+            : field.startsWith("guide_difficulty")
+              ? card.dataset.guideDifficulty
+              : field.startsWith("guide_hours")
+                ? card.dataset.guideHours
+                : field === "hours"
+                  ? card.dataset.hours
+                  : field === "recent"
+                    ? card.dataset.recent
+                    : card.dataset.gameName.toLocaleLowerCase();
     cards.sort((a, b) => {
       const av = value(a),
         bv = value(b),
@@ -225,13 +290,20 @@
     let visible = 0;
     cards.forEach((card) => {
       const matches =
-        !query || card.dataset.gameName.toLocaleLowerCase().includes(query);
+        (!query || card.dataset.gameName.toLocaleLowerCase().includes(query)) &&
+        (document.querySelector("#played")?.value !== "favorites" ||
+          card.dataset.favorite === "true");
       card.hidden = !matches;
       card.classList.toggle("is-filtered-out", !matches);
       if (matches) visible += 1;
     });
     if (countLabel) countLabel.textContent = `${visible} encontrados`;
+    const emptyFavorites = document.querySelector("[data-favorites-empty]");
+    if (emptyFavorites)
+      emptyFavorites.hidden =
+        document.querySelector("#played")?.value !== "favorites" || visible > 0;
   }
+  document.addEventListener("favorite-updated", filterCardsByName);
   function bindAchievementFilter(root) {
     const filter = root.querySelector("[data-achievement-filter]");
     if (!filter) return;
@@ -298,9 +370,14 @@
     .querySelector(".card-filters")
     ?.addEventListener("change", (event) => {
       if (event.target.id === "played") {
+        if (nameInput) {
+          clearTimeout(nameFilterTimer);
+          nameInput.value = "";
+        }
         document.querySelector('.card-filters input[name="game"]')?.remove();
         const url = new URL(window.location.href);
         url.searchParams.delete("game");
+        url.searchParams.delete("q");
         window.history.replaceState(
           {},
           "",
@@ -332,6 +409,7 @@
   document
     .querySelector("#refresh-submit")
     ?.addEventListener("click", async () => {
+      const run = ++refreshRun;
       const select = document.querySelector("#refresh-mode");
       if (!select) return;
       const button = document.querySelector("#refresh-submit");
@@ -378,7 +456,9 @@
       try {
         if (select.value === "hltb") {
           const endpoint = `/api/profile/${steamid}/hltb`;
-          const initial = await fetch(endpoint, { signal: refreshController.signal });
+          const initial = await fetch(`${endpoint}?fresh=1`, {
+            signal: refreshController.signal,
+          });
           if (!initial.ok) throw new Error("HLTB indisponível");
           const initialData = await initial.json();
           const target = Math.min(initialData.pending, 20);
@@ -388,6 +468,25 @@
             syncBar.max = Math.max(target, 1);
             syncBar.value = 0;
           }
+          if (target === 0) {
+            if (syncBar) {
+              syncBar.max = 1;
+              syncBar.value = 1;
+            }
+            if (syncLabel)
+              syncLabel.textContent =
+                "Todos os tempos HLTB já estão atualizados.";
+            select.disabled = false;
+            if (button) button.disabled = false;
+            if (cancelButton) cancelButton.hidden = true;
+            window.setTimeout(() => {
+              if (sync) {
+                sync.classList.add("is-hidden", "is-done");
+                sync.hidden = true;
+              }
+            }, 1800);
+            return;
+          }
           while (processed < target && pending > 0) {
             const response = await fetch(`${endpoint}?limit=1`, {
               method: "POST",
@@ -395,13 +494,14 @@
             });
             if (!response.ok) throw new Error("HLTB indisponível");
             const data = await response.json();
-            if (data.pending >= pending) break;
-            processed = Math.min(target, processed + pending - data.pending);
+            if (!data.processed) break;
+            processed = Math.min(target, processed + data.processed);
             pending = data.pending;
             if (syncBar) syncBar.value = processed;
             if (syncLabel)
               syncLabel.textContent = `${processed} de ${target} jogos HLTB processados…`;
           }
+          if (run !== refreshRun) return;
           window.location.assign(`${window.location.pathname}?updated=hltb`);
           return;
         }
@@ -412,19 +512,27 @@
           signal: refreshController.signal,
         });
         if (!response.ok) throw new Error("Atualização indisponível");
+        if (run !== refreshRun) return;
         window.location.assign(response.url);
       } catch {
+        if (run !== refreshRun) return;
         if (refreshController.signal.aborted) {
-          if (syncLabel) syncLabel.textContent = "Atualização cancelada. Os dados já salvos foram mantidos.";
-          if (sync) {
-            sync.classList.add("is-hidden", "is-done");
-            sync.hidden = true;
-          }
-          document.querySelectorAll(".game-card.is-pending").forEach((card) => card.classList.remove("is-pending"));
+          if (syncLabel)
+            syncLabel.textContent =
+              "Atualização cancelada. Os dados já salvos foram mantidos.";
+          document
+            .querySelectorAll(".game-card.is-pending")
+            .forEach((card) => card.classList.remove("is-pending"));
           grid?.classList.remove("is-syncing");
           select.disabled = false;
           if (button) button.disabled = false;
           if (cancelButton) cancelButton.hidden = true;
+          window.setTimeout(() => {
+            if (sync) {
+              sync.classList.add("is-hidden", "is-done");
+              sync.hidden = true;
+            }
+          }, 1800);
           return;
         }
         select.disabled = false;
@@ -435,29 +543,57 @@
       }
     });
   let refreshController;
-  document.querySelector("#refresh-cancel")?.addEventListener("click", async () => {
-    const select = document.querySelector("#refresh-mode");
-    const button = document.querySelector("#refresh-submit");
-    const cancelButton = document.querySelector("#refresh-cancel");
-    const sync = document.querySelector("[data-progress-sync]");
-    const form = select?.form;
-    if (!select || !form) return;
-    refreshController?.abort();
-    const steamid = new URL(form.action, window.location.origin).pathname.split("/")[2];
-    await fetch(`/api/profile/${steamid}/cancel-refresh`, { method: "POST" }).catch(() => {});
-    if (sync) {
-      sync.classList.add("is-hidden", "is-done");
-      sync.hidden = true;
-    }
-    document.querySelectorAll(".game-card.is-pending").forEach((card) => card.classList.remove("is-pending"));
-    grid?.classList.remove("is-syncing");
-    select.disabled = false;
-    if (button) button.disabled = false;
-    if (cancelButton) cancelButton.hidden = true;
-  });
-  document.querySelector(".refresh-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-  });
+  let refreshRun = 0;
+  document
+    .querySelector("#refresh-cancel")
+    ?.addEventListener("click", async () => {
+      const select = document.querySelector("#refresh-mode");
+      const button = document.querySelector("#refresh-submit");
+      const cancelButton = document.querySelector("#refresh-cancel");
+      const sync = document.querySelector("[data-progress-sync]");
+      const syncLabel = sync?.querySelector("[data-progress-label]");
+      const form = select?.form;
+      if (!select || !form) return;
+      refreshRun += 1;
+      refreshController?.abort();
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("sync");
+      cleanUrl.searchParams.delete("updated");
+      window.history.replaceState(
+        {},
+        "",
+        `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+      );
+      if (grid) grid.dataset.syncNow = "false";
+      const steamid = new URL(
+        form.action,
+        window.location.origin,
+      ).pathname.split("/")[2];
+      await fetch(`/api/profile/${steamid}/cancel-refresh`, {
+        method: "POST",
+      }).catch(() => {});
+      if (syncLabel)
+        syncLabel.textContent =
+          "Atualização cancelada. Os dados já salvos foram mantidos.";
+      document
+        .querySelectorAll(".game-card.is-pending")
+        .forEach((card) => card.classList.remove("is-pending"));
+      grid?.classList.remove("is-syncing");
+      select.disabled = false;
+      if (button) button.disabled = false;
+      if (cancelButton) cancelButton.hidden = true;
+      window.setTimeout(() => {
+        if (sync) {
+          sync.classList.add("is-hidden", "is-done");
+          sync.hidden = true;
+        }
+      }, 1800);
+    });
+  document
+    .querySelector(".refresh-form")
+    ?.addEventListener("submit", (event) => {
+      event.preventDefault();
+    });
   function openModal() {
     modal.hidden = false;
     document.body.classList.add("modal-open");
@@ -491,15 +627,18 @@
     hideBrokenImages(panel);
   }
   function renderDetailError() {
-    panel.innerHTML = '<div class="detail-loading-error"><strong>Não foi possível carregar os detalhes.</strong><span>Verifique a conexão e tente abrir o card novamente.</span></div>';
+    panel.innerHTML =
+      '<div class="detail-loading-error"><strong>Não foi possível carregar os detalhes.</strong><span>Verifique a conexão e tente abrir o card novamente.</span></div>';
   }
   function syncSelectedCard(card) {
-    document.querySelectorAll("a[data-game]").forEach((item) => {
+    document.querySelectorAll(".game-card[data-game]").forEach((item) => {
       item.classList.toggle("is-selected", item === card);
       item.removeAttribute("aria-current");
     });
     card.setAttribute("aria-current", "true");
-    const selectedInput = document.querySelector('.card-filters input[name="game"]');
+    const selectedInput = document.querySelector(
+      '.card-filters input[name="game"]',
+    );
     if (selectedInput) selectedInput.value = card.dataset.game;
     else {
       const input = document.createElement("input");
@@ -510,7 +649,11 @@
     }
     const modalUrl = new URL(window.location.href);
     modalUrl.searchParams.set("game", card.dataset.game);
-    history.pushState({}, "", `${modalUrl.pathname}${modalUrl.search}${modalUrl.hash}`);
+    history.pushState(
+      {},
+      "",
+      `${modalUrl.pathname}${modalUrl.search}${modalUrl.hash}`,
+    );
   }
   modal.addEventListener("click", (event) => {
     if (event.target.closest("[data-close-modal]")) closeModal();
@@ -534,7 +677,7 @@
         );
       message.textContent = "Guia salvo.";
       const selectedCard = document.querySelector(
-        'a[data-game][aria-current="true"]',
+        '.game-card[data-game][aria-current="true"]',
       );
       if (selectedCard) {
         const detailResponse = await fetch(selectedCard.dataset.detailUrl);
@@ -550,7 +693,8 @@
     if (event.key === "Escape" && !modal.hidden) closeModal();
   });
   document.addEventListener("click", async (event) => {
-    const card = event.target.closest("a[data-detail-url]");
+    if (event.target.closest("[data-favorite-button]")) return;
+    const card = event.target.closest(".game-card[data-detail-url]");
     if (
       !card ||
       event.button !== 0 ||
@@ -600,5 +744,3 @@
   });
   window.addEventListener("popstate", () => location.reload());
 })();
-
-

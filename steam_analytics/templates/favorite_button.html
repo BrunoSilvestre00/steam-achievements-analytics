@@ -1,0 +1,4 @@
+<button type="button" class="favorite-button" data-favorite-button data-favorite-appid="{{ favorite_game.appid }}" data-favorite-url="/api/profile/{{ library.steamid }}/games/{{ favorite_game.appid }}/favorite" aria-pressed="{{ 'true' if favorite_game.is_favorite else 'false' }}" aria-label="{{ 'Remover dos favoritos' if favorite_game.is_favorite else 'Adicionar aos favoritos' }}" title="{{ 'Remover dos favoritos' if favorite_game.is_favorite else 'Adicionar aos favoritos' }}">
+  <img class="favorite-image favorite-image-active" src="{{ url_for('static', path='assets/favorite-active.png') }}" alt="" aria-hidden="true" />
+  <img class="favorite-image favorite-image-deactive" src="{{ url_for('static', path='assets/favorite-deactive.png') }}" alt="" aria-hidden="true" />
+</button>

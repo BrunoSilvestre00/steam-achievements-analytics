@@ -24,7 +24,7 @@ def test_legacy_database_is_migrated_without_losing_games(tmp_path):
     assert result["games"][0]["name"] == "Portal"
     assert result["games"][0]["playtime_forever"] == 120
     with connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 14
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -88,5 +88,5 @@ def test_version_one_upgrades_without_losing_library(tmp_path):
         db.execute("PRAGMA user_version = 1")
     assert load_library(path, STEAMID)["game_count"] == 1
     with connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 14
         assert db.execute("SELECT count(*) FROM achievement_attempts").fetchone()[0] == 0
