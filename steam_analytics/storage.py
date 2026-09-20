@@ -1,6 +1,5 @@
 """Última biblioteca válida por perfil; atualização em uma única transação."""
 
-import csv
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -19,7 +18,7 @@ def connect(path):
     db.execute("PRAGMA foreign_keys = ON")
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 15:
+        if version > 17:
             raise sqlite3.DatabaseError("Versão do banco não suportada")
         if version == 0:
             with db:
@@ -151,6 +150,24 @@ def connect(path):
                 if "trophy_count" not in columns:
                     db.execute("ALTER TABLE trophy_guides ADD COLUMN trophy_count INTEGER")
                 db.execute("PRAGMA user_version = 15")
+        if version < 16:
+            with db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(game_checklist)")}
+                if "checklist_name" not in columns:
+                    db.execute("ALTER TABLE game_checklist ADD COLUMN checklist_name TEXT NOT NULL DEFAULT 'Checklist geral'")
+                db.execute("PRAGMA user_version = 16")
+                version = 16
+        if version < 17:
+            with db:
+                db.execute("""CREATE TABLE IF NOT EXISTS game_checklist_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    steamid TEXT NOT NULL REFERENCES libraries(steamid), appid INTEGER NOT NULL REFERENCES games(appid),
+                    name TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE (steamid, appid, name)
+                )""")
+                db.execute("INSERT OR IGNORE INTO game_checklist_groups (steamid,appid,name,position) SELECT steamid,appid,checklist_name,MIN(position) FROM game_checklist GROUP BY steamid,appid,checklist_name")
+                db.execute("PRAGMA user_version = 17")
+                version = 17
         yield db
     finally:
         db.close()
@@ -464,6 +481,21 @@ def load_hltb_summary(path, appids):
 
 def load_game_workspace(path, steamid, appid):
     with connect(path) as db:
+        checklist_items = [
+            dict(r)
+            for r in db.execute(
+                "SELECT * FROM game_checklist WHERE steamid=? AND appid=? ORDER BY checklist_name COLLATE NOCASE, position,id",
+                (steamid, appid),
+            )
+        ]
+        groups = [dict(r) for r in db.execute("SELECT * FROM game_checklist_groups WHERE steamid=? AND appid=? ORDER BY position,id", (steamid, appid))]
+        checklists = [{"id": group["id"], "name": group["name"], "items": []} for group in groups]
+        for item in checklist_items:
+            group = next((entry for entry in checklists if entry["name"] == item["checklist_name"]), None)
+            if group is None:
+                group = {"name": item["checklist_name"], "items": []}
+                checklists.append(group)
+            group["items"].append(item)
         return {
             "notes": [
                 dict(r)
@@ -471,12 +503,8 @@ def load_game_workspace(path, steamid, appid):
                     "SELECT * FROM game_notes WHERE steamid=? AND appid=? ORDER BY updated_at DESC", (steamid, appid)
                 )
             ],
-            "checklist": [
-                dict(r)
-                for r in db.execute(
-                    "SELECT * FROM game_checklist WHERE steamid=? AND appid=? ORDER BY position,id", (steamid, appid)
-                )
-            ],
+            "checklist": checklist_items,
+            "checklists": checklists,
             "links": [
                 dict(r)
                 for r in db.execute(
@@ -495,20 +523,60 @@ def add_game_note(path, steamid, appid, body):
         )
 
 
-def add_checklist_item(path, steamid, appid, label):
+def add_checklist_item(path, steamid, appid, label, checklist_name="Checklist geral"):
+    checklist_name = checklist_name.strip() or "Checklist geral"
     with connect(path) as db, db:
+        db.execute("INSERT OR IGNORE INTO game_checklist_groups (steamid,appid,name,position) VALUES (?,?,?,COALESCE((SELECT MAX(position)+1 FROM game_checklist_groups WHERE steamid=? AND appid=?),0))", (steamid, appid, checklist_name, steamid, appid))
         position = db.execute(
-            "SELECT COALESCE(MAX(position),-1)+1 FROM game_checklist WHERE steamid=? AND appid=?", (steamid, appid)
+            "SELECT COALESCE(MAX(position),-1)+1 FROM game_checklist WHERE steamid=? AND appid=? AND checklist_name=?",
+            (steamid, appid, checklist_name),
         ).fetchone()[0]
         db.execute(
-            "INSERT INTO game_checklist (steamid,appid,label,position) VALUES (?,?,?,?)",
-            (steamid, appid, label, position),
+            "INSERT INTO game_checklist (steamid,appid,label,position,checklist_name) VALUES (?,?,?,?,?)",
+            (steamid, appid, label, position, checklist_name),
         )
+
+
+def create_checklist_group(path, steamid, appid, name):
+    name = name.strip()
+    if not name:
+        return
+    with connect(path) as db, db:
+        position = db.execute("SELECT COALESCE(MAX(position),-1)+1 FROM game_checklist_groups WHERE steamid=? AND appid=?", (steamid, appid)).fetchone()[0]
+        db.execute("INSERT OR IGNORE INTO game_checklist_groups (steamid,appid,name,position) VALUES (?,?,?,?)", (steamid, appid, name, position))
 
 
 def toggle_checklist_item(path, steamid, item_id, checked):
     with connect(path) as db, db:
         db.execute("UPDATE game_checklist SET checked=? WHERE id=? AND steamid=?", (int(checked), item_id, steamid))
+
+
+def delete_checklist_item(path, steamid, appid, item_id):
+    with connect(path) as db, db:
+        cursor = db.execute(
+            "DELETE FROM game_checklist WHERE id=? AND steamid=? AND appid=?",
+            (item_id, steamid, appid),
+        )
+        return cursor.rowcount > 0
+
+
+def delete_checklist_group(path, steamid, appid, group_id):
+    with connect(path) as db, db:
+        group = db.execute(
+            "SELECT name FROM game_checklist_groups WHERE id=? AND steamid=? AND appid=?",
+            (group_id, steamid, appid),
+        ).fetchone()
+        if group is None:
+            return False
+        db.execute(
+            "DELETE FROM game_checklist WHERE steamid=? AND appid=? AND checklist_name=?",
+            (steamid, appid, group["name"]),
+        )
+        db.execute(
+            "DELETE FROM game_checklist_groups WHERE id=? AND steamid=? AND appid=?",
+            (group_id, steamid, appid),
+        )
+        return True
 
 
 def add_game_link(path, steamid, appid, label, url):
@@ -517,6 +585,31 @@ def add_game_link(path, steamid, appid, label, url):
             "INSERT INTO game_links (steamid,appid,label,url,created_at) VALUES (?,?,?,?,?)",
             (steamid, appid, label, url, datetime.now(timezone.utc).isoformat()),
         )
+
+
+def replace_game_workspace(path, steamid, appid, workspace):
+    """Substitui notas, checklists e links por dados importados de Markdown."""
+    now = datetime.now(timezone.utc).isoformat()
+    with connect(path) as db, db:
+        db.execute("DELETE FROM game_notes WHERE steamid=? AND appid=?", (steamid, appid))
+        db.execute("DELETE FROM game_checklist WHERE steamid=? AND appid=?", (steamid, appid))
+        db.execute("DELETE FROM game_checklist_groups WHERE steamid=? AND appid=?", (steamid, appid))
+        db.execute("DELETE FROM game_links WHERE steamid=? AND appid=?", (steamid, appid))
+        for body in workspace.get("notes", []):
+            if str(body).strip():
+                db.execute("INSERT INTO game_notes (steamid,appid,body,created_at,updated_at) VALUES (?,?,?,?,?)", (steamid, appid, str(body).strip(), now, now))
+        for checklist in workspace.get("checklists", []):
+            name = str(checklist.get("name", "Checklist geral")).strip() or "Checklist geral"
+            position = db.execute("SELECT COALESCE(MAX(position),-1)+1 FROM game_checklist_groups WHERE steamid=? AND appid=?", (steamid, appid)).fetchone()[0]
+            db.execute("INSERT OR IGNORE INTO game_checklist_groups (steamid,appid,name,position) VALUES (?,?,?,?)", (steamid, appid, name, position))
+            for position, item in enumerate(checklist.get("items", [])):
+                label = str(item.get("label", "")).strip()
+                if label:
+                    db.execute("INSERT INTO game_checklist (steamid,appid,label,checked,position,checklist_name) VALUES (?,?,?,?,?,?)", (steamid, appid, label, int(bool(item.get("checked"))), position, name))
+        for link in workspace.get("links", []):
+            url = str(link.get("url", "")).strip()
+            if url:
+                db.execute("INSERT INTO game_links (steamid,appid,label,url,created_at) VALUES (?,?,?,?,?)", (steamid, appid, str(link.get("label") or url).strip(), url, now))
 
 
 def load_trophy_guide(path, appid):
@@ -584,36 +677,3 @@ def save_trophy_guide_error(path, appid, data):
             error=excluded.error""",
             (appid, data["url"], data["imported_at"], data["error"]),
         )
-
-
-def export_library(directory, steamid, games, imported_at):
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    json_path = directory / f"library-{steamid}.json"
-    csv_path = directory / f"library-{steamid}.csv"
-    payload = {"steamid": steamid, "imported_at": imported_at, "game_count": len(games), "games": games}
-    temporary = json_path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(json_path)
-    temporary = csv_path.with_suffix(".csv.tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        fields = [
-            "appid",
-            "name",
-            "playtime_forever",
-            "playtime_hours",
-            "playtime_2weeks",
-            "rtime_last_played",
-            "source",
-            "store_url",
-        ]
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for game in games:
-            row = dict(game)
-            # Nomes externos devem ser texto ao abrir o CSV em uma planilha.
-            if row["name"].lstrip().startswith(("=", "+", "-", "@")) or row["name"].startswith(("\t", "\r", "\n")):
-                row["name"] = "'" + row["name"]
-            writer.writerow(row)
-    temporary.replace(csv_path)
-    return json_path, csv_path

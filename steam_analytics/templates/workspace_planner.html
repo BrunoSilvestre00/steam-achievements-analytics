@@ -1,77 +1,47 @@
-  <div class="workspace-columns" id="personal-planning">
-    <section class="planner-card">
-      <h2>{% if no_achievements %}Meus objetivos{% else %}Checklist{% endif %}</h2>
-      <form
-        method="post"
-        action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist"
-      >
-        <input
-          name="label"
-          placeholder="{% if no_achievements %}Ex.: terminar a história e explorar o mapa{% else %}Ex.: verificar troféus perdíveis{% endif %}"
-          required
-        /><button type="submit">Adicionar</button>
-      </form>
-      {% for item in workspace.checklist %}<label class="check-item"
-        ><input
-          type="checkbox"
-          {%
-          if
-          item.checked
-          %}checked{%
-          endif
-          %}
-          onchange="fetch('/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist/{{ item.id }}',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({checked:this.checked})})"
-        /><span class="check-label{% if item.checked %} checked{% endif %}"
-          >{{ item.label }}</span
-        ></label
-      >{% else %}
-      <p class="muted">Adicione os passos da sua rota.</p>
-      {% endfor %}
-    </section>
+  <section class="planner-card workspace-file-card" id="workspace-file-tools">
+    <div class="planner-heading">
+      <div>
+        <h2>Workspace completo</h2>
+        <p class="muted">Um único Markdown reúne checklists, notas e links úteis deste jogo.</p>
+      </div>
+      <a class="planner-tool-link" href="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/export">Exportar workspace .md</a>
+    </div>
+    <form class="workspace-import-form" method="post" action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/import" enctype="multipart/form-data">
+      <label for="workspace-file">Importar workspace Markdown</label><input id="workspace-file" type="file" name="file" accept=".md,text/markdown" required /><button type="submit">Importar arquivo</button>
+    </form>
+  </section>
+
+  <details class="planner-card checklist-planner" open>
+    <summary class="planner-summary"><span>{% if no_achievements %}Meus objetivos{% else %}Checklists{% endif %}</span><small>{{ workspace['checklists']|length }} listas</small></summary>
+    <form class="new-checklist-form" data-workspace-group method="post" action="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist-group">
+      <input name="name" placeholder="Nome da nova lista (ex.: Itens de magia)" required /><button type="submit">Criar checklist</button>
+    </form>
+    <div class="checklist-groups">
+      {% for checklist in workspace['checklists'] %}
+      <section class="checklist-group" data-checklist-group-id="{{ checklist['id'] }}">
+        <div class="checklist-group-heading">
+          <h3>{{ checklist['name'] }}</h3>
+          <button class="checklist-delete" type="button" data-delete-checklist="{{ checklist['id'] }}" title="Excluir lista">Excluir lista</button>
+        </div>
+        <form class="checklist-item-form" data-workspace-checklist method="post" action="/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist">
+          <input type="hidden" name="checklist_name" value="{{ checklist['name'] }}" /><input name="label" placeholder="Adicionar item nesta lista" required /><button type="submit">Adicionar</button>
+        </form>
+        {% for item in checklist['items'] %}<div class="check-item" data-checklist-item-id="{{ item['id'] }}"><label><input type="checkbox" {% if item['checked'] %}checked{% endif %} onchange="fetch('/api/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/checklist/{{ item.id }}',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({checked:this.checked})})" /><span class="check-label{% if item['checked'] %} checked{% endif %}">{{ item['label'] }}</span></label><button class="checklist-delete-item" type="button" data-delete-checklist-item="{{ item['id'] }}" title="Excluir item" aria-label="Excluir item">×</button></div>{% endfor %}
+        {% if not checklist['items'] %}<p class="muted checklist-empty">Nenhum item ainda.</p>{% endif %}
+      </section>
+      {% else %}<p class="muted">Crie sua primeira lista de objetivos.</p>{% endfor %}
+    </div>
+  </details>
+
+  <div class="workspace-columns planner-secondary">
     <section class="planner-card">
       <h2>Notas</h2>
-      <form
-        method="post"
-        action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/note"
-      >
-        <textarea
-          name="body"
-          rows="4"
-          placeholder="{% if no_achievements %}Anote descobertas, estratégias e o que achou do jogo…{% else %}Estratégia, decisões, troféus perdíveis…{% endif %}"
-          required
-        ></textarea
-        ><button type="submit">Salvar nota</button>
-      </form>
-      {% for note in workspace.notes %}
-      <article class="saved-note">{{ note.body }}</article>
-      {% else %}
-      <p class="muted">Nenhuma nota salva ainda.</p>
-      {% endfor %}
+      <form method="post" action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/note"><textarea name="body" rows="4" placeholder="{% if no_achievements %}Anote descobertas, estratégias e o que achou do jogo…{% else %}Estratégia, decisões, troféus perdíveis…{% endif %}" required></textarea><button type="submit">Salvar nota</button></form>
+      {% for note in workspace.notes %}<article class="saved-note">{{ note.body }}</article>{% else %}<p class="muted">Nenhuma nota salva ainda.</p>{% endfor %}
     </section>
     <section class="planner-card">
       <h2>Links úteis</h2>
-      <form
-        method="post"
-        action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/link"
-      >
-        <input
-          name="url"
-          type="url"
-          placeholder="https://..."
-          required
-        /><input
-          name="label"
-          placeholder="Nome do link (opcional)"
-        /><button type="submit">Adicionar link</button>
-      </form>
-      {% for link in workspace.links %}<a
-        class="saved-link"
-        href="{{ link.url }}"
-        target="_blank"
-        rel="noopener noreferrer"
-        >{{ link.label }} ↗</a
-      >{% else %}
-      <p class="muted">Guia, wiki, vídeo ou mapa.</p>
-      {% endfor %}
+      <form method="post" action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/link"><input name="url" type="url" placeholder="https://..." required /><input name="label" placeholder="Nome do link (opcional)" /><button type="submit">Adicionar link</button></form>
+      {% for link in workspace.links %}<a class="saved-link" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }} ↗</a>{% else %}<p class="muted">Guia, wiki, vídeo ou mapa.</p>{% endfor %}
     </section>
   </div>

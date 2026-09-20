@@ -87,7 +87,7 @@ block content %}
     {% endif %}
     <div class="workspace-overview-card hltb-overview-card">
       <div class="overview-card-heading"><span class="eyebrow">HOWLONGTOBEAT</span><span class="overview-source">HLTB</span></div>
-      <div class="overview-metrics"><div><strong>{% if hltb and hltb.main_story is not none %}{{ hltb.main_story | round(0) | int }} h{% else %}?{% endif %}</strong><small>História</small></div><div><strong>{% if hltb and hltb.completionist is not none %}{{ hltb.completionist | round(0) | int }} h{% else %}?{% endif %}</strong><small>Completionist</small></div></div>
+      <div class="overview-metrics"><div><strong>{% if hltb and hltb.get('main_story') is not none %}{{ hltb.get('main_story') | round(0) | int }} h{% else %}?{% endif %}</strong><small>História</small></div><div><strong>{% if hltb and hltb.get('completionist') is not none %}{{ hltb.get('completionist') | round(0) | int }} h{% else %}?{% endif %}</strong><small>Completionist</small></div></div>
     </div>
     {% if trophy_guide and not trophy_guide.error %}
     <div class="workspace-overview-card guide-overview-card">

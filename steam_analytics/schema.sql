@@ -96,7 +96,14 @@ CREATE TABLE IF NOT EXISTS game_notes (
 CREATE TABLE IF NOT EXISTS game_checklist (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     steamid TEXT NOT NULL REFERENCES libraries(steamid), appid INTEGER NOT NULL REFERENCES games(appid),
-    label TEXT NOT NULL, checked INTEGER NOT NULL DEFAULT 0 CHECK (checked IN (0, 1)), position INTEGER NOT NULL DEFAULT 0
+    label TEXT NOT NULL, checked INTEGER NOT NULL DEFAULT 0 CHECK (checked IN (0, 1)), position INTEGER NOT NULL DEFAULT 0,
+    checklist_name TEXT NOT NULL DEFAULT 'Checklist geral'
+);
+CREATE TABLE IF NOT EXISTS game_checklist_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    steamid TEXT NOT NULL REFERENCES libraries(steamid), appid INTEGER NOT NULL REFERENCES games(appid),
+    name TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (steamid, appid, name)
 );
 CREATE TABLE IF NOT EXISTS game_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

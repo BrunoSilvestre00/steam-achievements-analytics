@@ -1,5 +1,5 @@
 {% if selected %}
-<article class="game-detail-content{% if achievements and achievements.complete %} is-complete{% endif %}" data-selected-game="{{ selected.appid }}" data-hltb-completionist="{{ hltb.completionist if hltb and hltb.completionist is not none else '' }}" data-hltb-error="{{ 'true' if hltb and hltb.error else 'false' }}">
+<article class="game-detail-content{% if achievements and achievements.complete %} is-complete{% endif %}" data-selected-game="{{ selected.appid }}" data-hltb-completionist="{{ hltb.get('completionist') if hltb and hltb.get('completionist') is not none else '' }}" data-hltb-error="{{ 'true' if hltb and hltb.get('error') else 'false' }}">
   <div class="detail-art">
     {% with favorite_game=selected %}{% include "favorite_button.html" %}{% endwith %}
     <span class="art-fallback" aria-hidden="true">{{ selected.name }}</span
@@ -112,28 +112,28 @@
         <h3 id="planning-title">Planeje a platina</h3>
         <span class="source-badge">HLTB</span>
       </div>
-      {% if hltb and not hltb.error %}
+      {% if hltb and not hltb.get('error') %}
       <div class="planning-grid">
         <div>
           <span>História principal</span
           ><strong
-            >{% if hltb.main_story is not none %}{{ hltb.main_story | round(1)
+            >{% if hltb.get('main_story') is not none %}{{ hltb.get('main_story') | round(1)
             }} h{% else %}—{% endif %}</strong
           ><small>Tempo médio no HowLongToBeat</small>
         </div>
         <div>
           <span>Completionist</span
           ><strong
-            >{% if hltb.completionist is not none %}{{ hltb.completionist |
+            >{% if hltb.get('completionist') is not none %}{{ hltb.get('completionist') |
             round(1) }} h{% else %}—{% endif %}</strong
           ><small>Estimativa para completar tudo</small>
         </div>
       </div>
       <p class="guide-placeholder">
-        Correspondência: <strong>{{ hltb.matched_name }}</strong> · {{
-        (hltb.similarity * 100) | round(0) }}% de similaridade{% if hltb.url %}
+        Correspondência: <strong>{{ hltb.get('matched_name', '—') }}</strong> · {{
+        (hltb.get('similarity', 0) * 100) | round(0) }}% de similaridade{% if hltb.get('url') %}
         ·
-        <a href="{{ hltb.url }}" target="_blank" rel="noopener noreferrer"
+        <a href="{{ hltb.get('url') }}" target="_blank" rel="noopener noreferrer"
           >Abrir no HLTB ↗</a
         >{% endif %}
       </p>
@@ -141,7 +141,7 @@
       <div class="planning-grid">
         <div>
           <span>Tempo para 100%</span><strong>—</strong
-          ><small>{{ hltb.error if hltb else 'A consultar' }}</small>
+          ><small>{{ hltb.get('error') if hltb else 'A consultar' }}</small>
         </div>
         <div>
           <span>Dificuldade</span><strong>—</strong

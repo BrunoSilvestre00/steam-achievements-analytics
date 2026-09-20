@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import traceback
 import unicodedata
 import zlib
 from contextlib import asynccontextmanager
@@ -14,13 +15,13 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import Body, FastAPI, Form, Query, Request
+from fastapi import Body, FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .cache import RedisCache
+from .cache import MemoryCache
 from .config import DATA_ROOT, load_env
 from .service import LibraryService
 from .steam import SteamClient, SteamError, valid_steamid
@@ -29,11 +30,15 @@ from .storage import (
     add_game_link,
     add_game_note,
     connect,
+    create_checklist_group,
+    delete_checklist_group,
+    delete_checklist_item,
     load_game_workspace,
     load_hltb_summary,
     load_progress,
     load_trophy_guide,
     load_trophy_guide_summary,
+    replace_game_workspace,
     set_game_favorite,
     toggle_checklist_item,
 )
@@ -48,6 +53,89 @@ templates.env.filters["timestamp"] = lambda value: datetime.fromisoformat(value)
 templates.env.filters["percentage"] = lambda value: f"{value:g}".replace(".", ",")
 templates.env.filters["platinum_requirements"] = platinum_requirements
 templates.env.filters["trophy_count_difference"] = trophy_count_difference
+
+
+def workspace_markdown(workspace, game_name):
+    lines = [
+        f"# Workspace · {game_name}",
+        "",
+        "<!--",
+        "Edite este arquivo em texto e importe novamente no workspace.",
+        "",
+        "Estrutura aceita:",
+        "## Checklist: Nome do checklist",
+        "- [ ] Item pendente",
+        "- [x] Item concluído",
+        "",
+        "## Notas",
+        "### Nota 1",
+        "Texto livre da nota, inclusive em várias linhas.",
+        "",
+        "## Links úteis",
+        "- [Nome do link](https://exemplo.com)",
+        "",
+        "Você pode criar quantos checklists, notas e links quiser.",
+        "O mesmo arquivo contém todos os dados deste workspace.",
+        "-->",
+        "",
+    ]
+    for checklist in workspace.get("checklists", []):
+        lines.extend([f"## Checklist: {checklist['name']}", ""])
+        for item in checklist.get("items", []):
+            lines.append(f"- [{'x' if item['checked'] else ' '}] {item['label']}")
+        lines.append("")
+    lines.extend(["## Notas", ""])
+    for index, note in enumerate(workspace.get("notes", []), 1):
+        lines.extend([f"### Nota {index}", note["body"], ""])
+    if not workspace.get("notes"):
+        lines.append("<!-- Escreva notas abaixo de um título ### Nota. -->\n")
+    lines.extend(["## Links úteis", ""])
+    for link in workspace.get("links", []):
+        lines.append(f"- [{link['label']}]({link['url']})")
+    if not workspace.get("links"):
+        lines.append("<!-- Exemplo: - [Nome do guia](https://exemplo.com) -->\n")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def parse_workspace_markdown(raw):
+    raw = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL)
+    workspace = {"checklists": [], "notes": [], "links": []}
+    current_checklist = None
+    section = ""
+    current_note = None
+    for line in raw.replace("\r\n", "\n").split("\n"):
+        checklist_heading = re.match(r"^##\s+Checklist\s*:\s*(.+?)\s*$", line, re.IGNORECASE)
+        if checklist_heading:
+            current_checklist = {"name": checklist_heading.group(1).strip(), "items": []}
+            workspace["checklists"].append(current_checklist)
+            section = "checklist"
+            current_note = None
+            continue
+        heading = re.match(r"^##\s+(.+?)\s*$", line)
+        if heading:
+            section = heading.group(1).strip().casefold()
+            current_checklist = None
+            current_note = None
+            continue
+        note_heading = re.match(r"^###\s+Nota(?:\s+\d+)?\s*$", line, re.IGNORECASE)
+        if note_heading and section.startswith("notas"):
+            current_note = []
+            workspace["notes"].append(current_note)
+            continue
+        if section == "checklist" and current_checklist:
+            item = re.match(r"^\s*-\s*\[([ xX])\]\s+(.+?)\s*$", line)
+            if item:
+                current_checklist["items"].append({"label": item.group(2), "checked": item.group(1).lower() == "x"})
+        elif section.startswith("notas") and current_note is not None:
+            if line.strip() and not line.lstrip().startswith("<!--"):
+                current_note.append(line)
+        elif section.startswith("links"):
+            link = re.match(r"^\s*-\s*\[([^]]+)\]\((https?://[^)]+)\)\s*$", line)
+            if link:
+                workspace["links"].append({"label": link.group(1).strip(), "url": link.group(2).strip()})
+    workspace["notes"] = [{"body": "\n".join(note).strip()} for note in workspace["notes"] if "\n".join(note).strip()]
+    workspace["checklists"] = [group for group in workspace["checklists"] if group["name"]]
+    return workspace
 
 
 def sort_by_progress(games, direction):
@@ -115,12 +203,16 @@ def create_app(*, service=None):
         allow_headers=["Content-Type"],
     )
     app.state.library = service or LibraryService(os.environ.get("STEAM_API_KEY", ""), DATA_ROOT / "steam.sqlite3")
-    app.state.cache = RedisCache(ttl=300)
+    app.state.cache = MemoryCache(ttl=300)
     app.mount("/static", StaticFiles(directory=str(PACKAGE / "static")), name="static")
 
     @app.middleware("http")
     async def response_headers(request, call_next):
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            (DATA_ROOT / "desktop-error.log").write_text(traceback.format_exc(), encoding="utf-8")
+            raise
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = (
@@ -427,20 +519,72 @@ def create_app(*, service=None):
         return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
 
     @app.post("/profile/{steamid}/games/{appid}/workspace/checklist")
-    def workspace_checklist(steamid: str, appid: int, label: str = Form(...)):
-        add_checklist_item(app.state.library.database, steamid, appid, label.strip())
+    def workspace_checklist(steamid: str, appid: int, label: str = Form(...), checklist_name: str = Form("Checklist geral")):
+        add_checklist_item(app.state.library.database, steamid, appid, label.strip(), checklist_name.strip())
         return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
+
+    @app.post("/profile/{steamid}/games/{appid}/workspace/checklist-group")
+    def workspace_checklist_group(steamid: str, appid: int, name: str = Form(...)):
+        create_checklist_group(app.state.library.database, steamid, appid, name)
+        return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
+
+    @app.post("/api/profile/{steamid}/games/{appid}/workspace/checklist")
+    def workspace_checklist_api(steamid: str, appid: int, label: str = Form(...), checklist_name: str = Form("Checklist geral")):
+        add_checklist_item(app.state.library.database, steamid, appid, label.strip(), checklist_name.strip())
+        workspace = load_game_workspace(app.state.library.database, steamid, appid)
+        group = next((entry for entry in workspace["checklists"] if entry["name"] == checklist_name.strip()), None)
+        item = group["items"][-1] if group and group["items"] else None
+        return {"ok": True, "item": item}
+
+    @app.post("/api/profile/{steamid}/games/{appid}/workspace/checklist-group")
+    def workspace_checklist_group_api(steamid: str, appid: int, name: str = Form(...)):
+        create_checklist_group(app.state.library.database, steamid, appid, name)
+        workspace = load_game_workspace(app.state.library.database, steamid, appid)
+        group = next((entry for entry in workspace["checklists"] if entry["name"] == name.strip()), None)
+        return {"ok": True, "checklist": group}
 
     @app.patch("/api/profile/{steamid}/games/{appid}/workspace/checklist/{item_id}")
     def workspace_checklist_toggle(steamid: str, appid: int, item_id: int, payload: dict):
         toggle_checklist_item(app.state.library.database, steamid, item_id, bool(payload.get("checked")))
         return {"ok": True}
 
+    @app.delete("/api/profile/{steamid}/games/{appid}/workspace/checklist/{item_id}")
+    def workspace_checklist_delete(steamid: str, appid: int, item_id: int):
+        deleted = delete_checklist_item(app.state.library.database, steamid, appid, item_id)
+        return {"ok": deleted}
+
+    @app.delete("/api/profile/{steamid}/games/{appid}/workspace/checklist-group/{group_id}")
+    def workspace_checklist_group_delete(steamid: str, appid: int, group_id: int):
+        deleted = delete_checklist_group(app.state.library.database, steamid, appid, group_id)
+        return {"ok": deleted}
+
     @app.post("/profile/{steamid}/games/{appid}/workspace/link")
     def workspace_link(steamid: str, appid: int, label: str = Form(""), url: str = Form(...)):
         clean_url = url.strip()
         clean_label = label.strip() or clean_url
         add_game_link(app.state.library.database, steamid, appid, clean_label, clean_url)
+        return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
+
+    @app.get("/profile/{steamid}/games/{appid}/workspace/export")
+    def workspace_export(steamid: str, appid: int):
+        library = app.state.library.get_library(steamid)
+        selected = next((game for game in library["games"] if game["appid"] == appid), None)
+        if selected is None:
+            raise SteamError("Esse jogo não está na biblioteca importada.", 404)
+        body = workspace_markdown(load_game_workspace(app.state.library.database, steamid, appid), selected["name"])
+        return Response(
+            content=body,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="workspace-{appid}.md"'},
+        )
+
+    @app.post("/profile/{steamid}/games/{appid}/workspace/import")
+    async def workspace_import(steamid: str, appid: int, file: UploadFile = File(...)):
+        library = app.state.library.get_library(steamid)
+        if not any(game["appid"] == appid for game in library["games"]):
+            raise SteamError("Esse jogo não está na biblioteca importada.", 404)
+        raw = (await file.read()).decode("utf-8-sig")
+        replace_game_workspace(app.state.library.database, steamid, appid, parse_workspace_markdown(raw))
         return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
 
     @app.post("/api/profile/{steamid}/games/{appid}/trophy-guide")
@@ -597,7 +741,7 @@ def create_app(*, service=None):
         key = f"profile:{steamid}"
         cached = app.state.cache.get(key)
         if cached is not None:
-            return cached
+            return {**cached, "cached": True}
         result = app.state.library.get_library(steamid)
         app.state.cache.set(key, result)
         return result

@@ -5,3 +5,4 @@ ruff>=0.6,<1
 djlint>=1.36,<2
 pre-commit>=3.7,<5
 pyinstaller>=6.10,<7
+Pillow>=10,<12

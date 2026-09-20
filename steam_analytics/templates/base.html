@@ -22,8 +22,10 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='workspace.css') }}?v=48"
+      href="{{ url_for('static', path='workspace.css') }}?v=49"
     />
+    <link rel="stylesheet" href="{{ url_for('static', path='planner.css') }}?v=1" />
+    <link rel="stylesheet" href="{{ url_for('static', path='planner-overrides.css') }}?v=1" />
     <script
       src="{{ url_for('static', path='workspace.js') }}?v=51"
       defer
@@ -54,7 +56,7 @@
       </div>
       <div class="footer-column"><span class="footer-label">NAVEGAÇÃO</span><a href="/">Início</a><a href="/">Minha biblioteca</a></div>
       <div class="footer-column"><span class="footer-label">FONTES</span><a href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer">Steam</a><a href="https://howlongtobeat.com/" target="_blank" rel="noopener noreferrer">HowLongToBeat</a><a href="https://psnprofiles.com/" target="_blank" rel="noopener noreferrer">PSNProfiles</a></div>
-      <div class="footer-column footer-meta"><span class="footer-label">PROJETO</span><span>FastAPI · SQLite · Redis</span><span>Dados consultados sob demanda</span></div>
+      <div class="footer-column footer-meta"><span class="footer-label">PROJETO</span><span>FastAPI · SQLite</span><span>Dados consultados sob demanda</span></div>
     </footer>
   </body>
 </html>

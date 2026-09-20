@@ -1,5 +1,147 @@
 (() => {
   if (document.body.classList.contains("collector-page")) return;
+  document.addEventListener("submit", async (event) => {
+    const itemForm = event.target.closest("[data-workspace-checklist]");
+    const groupForm = event.target.closest("[data-workspace-group]");
+    if (!itemForm && !groupForm) return;
+    event.preventDefault();
+    const form = itemForm || groupForm;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error("Não foi possível salvar.");
+      if (itemForm && data.item) {
+        const list = itemForm.closest(".checklist-group");
+        const empty = list.querySelector(".checklist-empty");
+        empty?.remove();
+        const label = document.createElement("label");
+        label.className = "check-item";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.addEventListener("change", () => {
+          fetch(
+            `/api/profile/${location.pathname.split("/")[2]}/games/${location.pathname.split("/")[4]}/workspace/checklist/${data.item.id}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ checked: checkbox.checked }),
+            },
+          );
+        });
+        const text = document.createElement("span");
+        text.className = "check-label";
+        text.textContent = data.item.label;
+        const row = document.createElement("div");
+        row.className = "check-item";
+        row.dataset.checklistItemId = data.item.id;
+        label.append(checkbox, text);
+        const remove = document.createElement("button");
+        remove.className = "checklist-delete-item";
+        remove.type = "button";
+        remove.dataset.deleteChecklistItem = data.item.id;
+        remove.title = "Excluir item";
+        remove.setAttribute("aria-label", "Excluir item");
+        remove.textContent = "×";
+        row.append(label, remove);
+        list.append(row);
+        itemForm.reset();
+      } else if (groupForm && data.checklist) {
+        const groups = document.querySelector(".checklist-groups");
+        const empty = groups.querySelector(":scope > .muted");
+        empty?.remove();
+        const section = document.createElement("section");
+        section.className = "checklist-group";
+        section.dataset.checklistGroupId = data.checklist.id;
+        const headingRow = document.createElement("div");
+        headingRow.className = "checklist-group-heading";
+        const heading = document.createElement("h3");
+        heading.textContent = data.checklist.name;
+        const remove = document.createElement("button");
+        remove.className = "checklist-delete";
+        remove.type = "button";
+        remove.dataset.deleteChecklist = data.checklist.id;
+        remove.title = "Excluir lista";
+        remove.textContent = "Excluir lista";
+        headingRow.append(heading, remove);
+        const form = document.createElement("form");
+        form.className = "checklist-item-form";
+        form.dataset.workspaceChecklist = "";
+        form.method = "post";
+        form.action = groupForm.action.replace("checklist-group", "checklist");
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = "checklist_name";
+        hidden.value = data.checklist.name;
+        const input = document.createElement("input");
+        input.name = "label";
+        input.placeholder = "Adicionar item nesta lista";
+        input.required = true;
+        const add = document.createElement("button");
+        add.type = "submit";
+        add.textContent = "Adicionar";
+        form.append(hidden, input, add);
+        section.append(headingRow, form);
+        groups.append(section);
+        groupForm.reset();
+      }
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(
+      "[data-delete-checklist-item], [data-delete-checklist]",
+    );
+    if (!button) return;
+    const kind = button.dataset.deleteChecklistItem ? "item" : "group";
+    const label =
+      kind === "item" ? "este item" : "esta lista e todos os seus itens";
+    if (!window.confirm(`Excluir ${label}?`)) return;
+    const sid = location.pathname.split("/")[2];
+    const appid = location.pathname.split("/")[4];
+    const id =
+      kind === "item"
+        ? button.dataset.deleteChecklistItem
+        : button.dataset.deleteChecklist;
+    const path = kind === "item" ? "checklist" : "checklist-group";
+    button.disabled = true;
+    try {
+      const response = await fetch(
+        `/api/profile/${sid}/games/${appid}/workspace/${path}/${id}`,
+        { method: "DELETE" },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.ok)
+        throw new Error("Não foi possível excluir.");
+      const target =
+        kind === "item"
+          ? button.closest("[data-checklist-item-id]")
+          : button.closest("[data-checklist-group-id]");
+      target?.remove();
+      const groups = document.querySelectorAll(".checklist-group");
+      const counter = document.querySelector(".planner-summary small");
+      if (counter) counter.textContent = `${groups.length} listas`;
+      if (kind === "item") {
+        const group = button.closest(".checklist-group");
+        if (group && !group.querySelector("[data-checklist-item-id]")) {
+          const empty = document.createElement("p");
+          empty.className = "muted checklist-empty";
+          empty.textContent = "Nenhum item ainda.";
+          group.append(empty);
+        }
+      }
+    } catch (error) {
+      button.disabled = false;
+      window.alert(error.message);
+    }
+  });
   const importField = document.querySelector("#steam-import-payload");
   if (importField?.value) {
     importField.focus();

@@ -1,4 +1,4 @@
-# PyInstaller spec para a distribuição Windows sem Docker/Redis.
+# PyInstaller spec para a distribuição Windows.
 from pathlib import Path
 
 from PyInstaller.building.build_main import Analysis, COLLECT, EXE, PYZ
@@ -30,7 +30,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="SteamAchievementAnalytics",
+    name="SAA",
     icon=str(project_root / "steam_analytics" / "static" / "assets" / "favicon.ico"),
     debug=False,
     bootloader_ignore_signals=False,
