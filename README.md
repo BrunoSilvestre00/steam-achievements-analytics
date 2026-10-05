@@ -81,3 +81,6 @@ scripts/
 packaging/
   Leia-me.md
 ```
+# Versão do projeto
+
+A versão está centralizada em `steam_analytics/version.py`. Ela é alterada somente quando uma nova versão é solicitada explicitamente, e não a cada funcionalidade.

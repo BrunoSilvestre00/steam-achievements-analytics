@@ -25,9 +25,9 @@
       href="{{ url_for('static', path='workspace.css') }}?v=49"
     />
     <link rel="stylesheet" href="{{ url_for('static', path='planner.css') }}?v=1" />
-    <link rel="stylesheet" href="{{ url_for('static', path='planner-overrides.css') }}?v=1" />
+    <link rel="stylesheet" href="{{ url_for('static', path='planner-overrides.css') }}?v=2" />
     <script
-      src="{{ url_for('static', path='workspace.js') }}?v=51"
+      src="{{ url_for('static', path='workspace.js') }}?v=52"
       defer
     ></script>
     <script
@@ -52,7 +52,7 @@
     <footer class="site-footer">
       <div class="footer-brand">
         <a href="/" class="footer-logo"><img src="{{ url_for('static', path='assets/logo.png') }}" alt="" /><span>Steam Achievement Analytics</span></a>
-        <span class="footer-credit">© 2026 Bruno Silvestre · <a href="https://github.com/BrunoSilvestre00" target="_blank" rel="noopener noreferrer">GitHub</a> · <a href="https://www.linkedin.com/in/bruno-silvestre/" target="_blank" rel="noopener noreferrer">LinkedIn</a></span>
+        <span class="footer-credit">© 2026 Bruno Silvestre · <span class="app-version">v{{ app_version }}</span> · <a href="https://github.com/BrunoSilvestre00" target="_blank" rel="noopener noreferrer">GitHub</a> · <a href="https://www.linkedin.com/in/bruno-silvestre/" target="_blank" rel="noopener noreferrer">LinkedIn</a></span>
       </div>
       <div class="footer-column"><span class="footer-label">NAVEGAÇÃO</span><a href="/">Início</a><a href="/">Minha biblioteca</a></div>
       <div class="footer-column"><span class="footer-label">FONTES</span><a href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer">Steam</a><a href="https://howlongtobeat.com/" target="_blank" rel="noopener noreferrer">HowLongToBeat</a><a href="https://psnprofiles.com/" target="_blank" rel="noopener noreferrer">PSNProfiles</a></div>

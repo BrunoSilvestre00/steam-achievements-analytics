@@ -15,6 +15,7 @@ import uvicorn
 from PIL import Image
 
 from steam_analytics.config import ROOT, load_env
+from steam_analytics.version import VERSION
 from steam_analytics.web import app
 
 # Shared with the web application's cool-blue theme.
@@ -58,7 +59,7 @@ class DesktopController:
         self.server_thread = threading.Thread(target=self._run_server, name="steam-analytics-server", daemon=True)
         ctk.set_appearance_mode("dark")
         self.root = ctk.CTk()
-        self.root.title("Steam Achievement Analytics")
+        self.root.title(f"Steam Achievement Analytics · v{VERSION}")
         self.root.geometry("640x760")
         self.root.minsize(600, 700)
         self.root.configure(fg_color=BG)
@@ -79,8 +80,11 @@ class DesktopController:
     def _run_server(self):
         try:
             self.server.run()
-        except Exception as error:
+        except BaseException as error:
             self.server_error_path.write_text(f"{type(error).__name__}: {error}\n", encoding="utf-8")
+        finally:
+            if not self.server.started and not self.server_error_path.exists():
+                self.server_error_path.write_text("O servidor terminou antes de sinalizar a inicialização.\n", encoding="utf-8")
 
     def _label(self, parent, text, **kwargs):
         return ctk.CTkLabel(parent, text=text, text_color=kwargs.pop("text_color", TEXT), **kwargs)
@@ -98,6 +102,7 @@ class DesktopController:
                 size=(420, 51),
             )
             ctk.CTkLabel(header, text="", image=self.logo_title_image).pack(anchor="center", pady=(0, 8))
+        self._label(header, f"v{VERSION}", text_color=MUTED, font=ctk.CTkFont(size=11)).pack(anchor="center")
         card = ctk.CTkFrame(root, fg_color=SURFACE, corner_radius=16)
         card.pack(fill="x", pady=(10, 0))
         status_row = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
@@ -153,7 +158,7 @@ class DesktopController:
         footer_info = ctk.CTkFrame(footer, fg_color="transparent", corner_radius=0)
         footer_info.pack(side="left", anchor="w")
         self._label(footer_info, "Os dados ficam salvos localmente no SQLite.", text_color=MUTED, font=ctk.CTkFont(size=11)).pack(anchor="w")
-        self._label(footer_info, "© 2026 Bruno Silvestre", text_color="#648ca4", font=ctk.CTkFont(size=10)).pack(anchor="w", pady=(3, 0))
+        self._label(footer_info, f"© 2026 Bruno Silvestre · v{VERSION}", text_color="#648ca4", font=ctk.CTkFont(size=10)).pack(anchor="w", pady=(3, 0))
         ctk.CTkButton(footer, text="Encerrar aplicação", height=40, corner_radius=8, fg_color="transparent", hover_color="#3b2027", border_width=1, border_color="#8c4a51", text_color=DANGER, font=ctk.CTkFont(size=12, weight="bold"), command=self.request_close).pack(side="right")
 
     def _set_icon(self):

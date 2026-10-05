@@ -24,7 +24,7 @@ def render(template, **context):
             "imported_at": "2026-09-19T00:00:00+00:00",
         },
         "selected": {"appid": 1, "name": "Example", "playtime_forever": 120},
-        "workspace": {"notes": [{"body": "Saved note"}], "checklist": [], "links": []},
+        "workspace": {"notes": [{"id": 1, "body": "Saved note"}], "checklist": [], "checklists": [], "links": []},
         "hltb": {"main_story": 5, "completionist": 10},
         "trophy_guide": None,
         "guide_pairing": None,

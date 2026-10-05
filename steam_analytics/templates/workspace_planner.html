@@ -1,3 +1,4 @@
+<div id="personal-planning">
   <section class="planner-card workspace-file-card" id="workspace-file-tools">
     <div class="planner-heading">
       <div>
@@ -33,15 +34,24 @@
     </div>
   </details>
 
-  <div class="workspace-columns planner-secondary">
-    <section class="planner-card">
-      <h2>Notas</h2>
-      <form method="post" action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/note"><textarea name="body" rows="4" placeholder="{% if no_achievements %}Anote descobertas, estratégias e o que achou do jogo…{% else %}Estratégia, decisões, troféus perdíveis…{% endif %}" required></textarea><button type="submit">Salvar nota</button></form>
-      {% for note in workspace.notes %}<article class="saved-note">{{ note.body }}</article>{% else %}<p class="muted">Nenhuma nota salva ainda.</p>{% endfor %}
-    </section>
-    <section class="planner-card">
+  <section class="planner-card links-planner">
       <h2>Links úteis</h2>
       <form method="post" action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/link"><input name="url" type="url" placeholder="https://..." required /><input name="label" placeholder="Nome do link (opcional)" /><button type="submit">Adicionar link</button></form>
       {% for link in workspace.links %}<a class="saved-link" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }} ↗</a>{% else %}<p class="muted">Guia, wiki, vídeo ou mapa.</p>{% endfor %}
-    </section>
-  </div>
+  </section>
+
+  <section class="planner-card notes-planner">
+    <div class="planner-heading">
+      <div>
+        <h2>Notas em Markdown</h2>
+        <p class="muted">Use títulos, listas, links, <strong>negrito</strong>, <em>itálico</em> e código.</p>
+      </div>
+    </div>
+    <form method="post" action="/profile/{{ library.steamid }}/games/{{ selected.appid }}/workspace/note"><textarea name="body" rows="6" placeholder="# Minha estratégia\n\nAnote decisões, rotas e troféus perdíveis…" required></textarea><button type="submit">Salvar nota</button></form>
+    <div class="notes-list">
+      {% for note in workspace.notes %}
+      <article class="saved-note" data-note-id="{{ note['id'] }}" data-note-body="{{ note['body']|e }}"><div class="note-actions"><button type="button" class="note-edit" data-edit-note title="Editar nota" aria-label="Editar nota">✎</button></div><div class="note-rendered">{{ note['body']|markdown|safe }}</div></article>
+      {% else %}<p class="muted">Nenhuma nota salva ainda.</p>{% endfor %}
+    </div>
+  </section>
+</div>

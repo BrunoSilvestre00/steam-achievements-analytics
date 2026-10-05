@@ -97,9 +97,64 @@
   });
   document.addEventListener("click", async (event) => {
     const button = event.target.closest(
-      "[data-delete-checklist-item], [data-delete-checklist]",
+      "[data-delete-checklist-item], [data-delete-checklist], [data-edit-note]",
     );
     if (!button) return;
+    if (button.matches("[data-edit-note]")) {
+      const card = button.closest("[data-note-id]");
+      if (!card || card.querySelector("textarea")) return;
+      const rendered = card.querySelector(".note-rendered");
+      const editor = document.createElement("textarea");
+      editor.className = "note-editor";
+      editor.rows = 7;
+      editor.value = card.dataset.noteBody || "";
+      const actions = document.createElement("div");
+      actions.className = "note-edit-actions";
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "note-save";
+      save.textContent = "Salvar";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "note-cancel";
+      cancel.textContent = "Cancelar";
+      actions.append(save, cancel);
+      rendered.replaceWith(editor);
+      editor.after(actions);
+      button.hidden = true;
+      cancel.addEventListener("click", () => {
+        editor.replaceWith(rendered);
+        actions.remove();
+        button.hidden = false;
+      });
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        try {
+          const sid = location.pathname.split("/")[2];
+          const appid = location.pathname.split("/")[4];
+          const response = await fetch(
+            `/api/profile/${sid}/games/${appid}/workspace/note/${card.dataset.noteId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ body: editor.value }),
+            },
+          );
+          const data = await response.json();
+          if (!response.ok || !data.ok)
+            throw new Error(data.detail || "Não foi possível salvar a nota.");
+          card.dataset.noteBody = data.body;
+          rendered.innerHTML = data.html;
+          editor.replaceWith(rendered);
+          actions.remove();
+          button.hidden = false;
+        } catch (error) {
+          save.disabled = false;
+          window.alert(error.message);
+        }
+      });
+      return;
+    }
     const kind = button.dataset.deleteChecklistItem ? "item" : "group";
     const label =
       kind === "item" ? "este item" : "esta lista e todos os seus itens";
@@ -139,6 +194,33 @@
       }
     } catch (error) {
       button.disabled = false;
+      window.alert(error.message);
+    }
+  });
+  document.addEventListener("change", async (event) => {
+    const checkbox = event.target.closest("[data-note-task]");
+    if (!checkbox) return;
+    const card = checkbox.closest("[data-note-id]");
+    checkbox.disabled = true;
+    try {
+      const sid = location.pathname.split("/")[2];
+      const appid = location.pathname.split("/")[4];
+      const response = await fetch(
+        `/api/profile/${sid}/games/${appid}/workspace/note/${card.dataset.noteId}/task/${checkbox.dataset.noteTask}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checked: checkbox.checked }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.ok)
+        throw new Error(data.detail || "Não foi possível salvar.");
+      card.dataset.noteBody = data.body;
+      card.querySelector(".note-rendered").innerHTML = data.html;
+    } catch (error) {
+      checkbox.checked = !checkbox.checked;
+      checkbox.disabled = false;
       window.alert(error.message);
     }
   });

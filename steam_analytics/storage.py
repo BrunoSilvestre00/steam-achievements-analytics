@@ -523,6 +523,16 @@ def add_game_note(path, steamid, appid, body):
         )
 
 
+def update_game_note(path, steamid, appid, note_id, body):
+    now = datetime.now(timezone.utc).isoformat()
+    with connect(path) as db, db:
+        cursor = db.execute(
+            "UPDATE game_notes SET body=?, updated_at=? WHERE id=? AND steamid=? AND appid=?",
+            (body, now, note_id, steamid, appid),
+        )
+        return cursor.rowcount > 0
+
+
 def add_checklist_item(path, steamid, appid, label, checklist_name="Checklist geral"):
     checklist_name = checklist_name.strip() or "Checklist geral"
     with connect(path) as db, db:
@@ -596,8 +606,9 @@ def replace_game_workspace(path, steamid, appid, workspace):
         db.execute("DELETE FROM game_checklist_groups WHERE steamid=? AND appid=?", (steamid, appid))
         db.execute("DELETE FROM game_links WHERE steamid=? AND appid=?", (steamid, appid))
         for body in workspace.get("notes", []):
-            if str(body).strip():
-                db.execute("INSERT INTO game_notes (steamid,appid,body,created_at,updated_at) VALUES (?,?,?,?,?)", (steamid, appid, str(body).strip(), now, now))
+            body_text = body.get("body", "") if isinstance(body, dict) else body
+            if str(body_text).strip():
+                db.execute("INSERT INTO game_notes (steamid,appid,body,created_at,updated_at) VALUES (?,?,?,?,?)", (steamid, appid, str(body_text).strip(), now, now))
         for checklist in workspace.get("checklists", []):
             name = str(checklist.get("name", "Checklist geral")).strip() or "Checklist geral"
             position = db.execute("SELECT COALESCE(MAX(position),-1)+1 FROM game_checklist_groups WHERE steamid=? AND appid=?", (steamid, appid)).fetchone()[0]

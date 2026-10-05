@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from .cache import MemoryCache
 from .config import DATA_ROOT, load_env
+from .markdown_notes import render_markdown, update_markdown_task
 from .service import LibraryService
 from .steam import SteamClient, SteamError, valid_steamid
 from .storage import (
@@ -41,8 +42,10 @@ from .storage import (
     replace_game_workspace,
     set_game_favorite,
     toggle_checklist_item,
+    update_game_note,
 )
 from .trophy import platinum_requirements, trophy_count_difference
+from .version import VERSION
 
 PACKAGE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(PACKAGE / "templates"))
@@ -53,6 +56,10 @@ templates.env.filters["timestamp"] = lambda value: datetime.fromisoformat(value)
 templates.env.filters["percentage"] = lambda value: f"{value:g}".replace(".", ",")
 templates.env.filters["platinum_requirements"] = platinum_requirements
 templates.env.filters["trophy_count_difference"] = trophy_count_difference
+
+
+templates.env.filters["markdown"] = render_markdown
+templates.env.globals["app_version"] = VERSION
 
 
 def workspace_markdown(workspace, game_name):
@@ -191,6 +198,7 @@ def create_app(*, service=None):
 
     app = FastAPI(
         title="Steam Achievement Analytics",
+        version=VERSION,
         description="Biblioteca Steam para planejar seus próximos 100%.",
         docs_url=None,
         redoc_url=None,
@@ -517,6 +525,27 @@ def create_app(*, service=None):
     def workspace_note(steamid: str, appid: int, body: str = Form(...)):
         add_game_note(app.state.library.database, steamid, appid, body.strip())
         return RedirectResponse(f"/profile/{steamid}/games/{appid}/workspace", status_code=303)
+
+    @app.patch("/api/profile/{steamid}/games/{appid}/workspace/note/{note_id}")
+    def workspace_note_update(steamid: str, appid: int, note_id: int, payload: dict):
+        body = str(payload.get("body", "")).strip()
+        if not body:
+            return JSONResponse({"ok": False, "detail": "A nota não pode ficar vazia."}, status_code=400)
+        updated = update_game_note(app.state.library.database, steamid, appid, note_id, body)
+        return {"ok": updated, "body": body, "html": render_markdown(body)}
+
+    @app.patch("/api/profile/{steamid}/games/{appid}/workspace/note/{note_id}/task/{task_index}")
+    def workspace_note_task(steamid: str, appid: int, note_id: int, task_index: int, payload: dict):
+        notes = load_game_workspace(app.state.library.database, steamid, appid)["notes"]
+        note = next((note for note in notes if note["id"] == note_id), None)
+        if note is None:
+            return JSONResponse({"detail": "Nota não encontrada."}, status_code=404)
+        try:
+            body = update_markdown_task(note["body"], task_index, bool(payload.get("checked")))
+        except ValueError as error:
+            return JSONResponse({"detail": str(error)}, status_code=400)
+        update_game_note(app.state.library.database, steamid, appid, note_id, body)
+        return {"ok": True, "body": body, "html": render_markdown(body)}
 
     @app.post("/profile/{steamid}/games/{appid}/workspace/checklist")
     def workspace_checklist(steamid: str, appid: int, label: str = Form(...), checklist_name: str = Form("Checklist geral")):
