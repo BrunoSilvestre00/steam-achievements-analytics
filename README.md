@@ -84,3 +84,18 @@ packaging/
 # Versão do projeto
 
 A versão está centralizada em `steam_analytics/version.py`. Ela é alterada somente quando uma nova versão é solicitada explicitamente, e não a cada funcionalidade.
+
+## Gerar guias Steam com uma LLM
+
+A skill do projeto fica em `.agents/skills$steam-guide/SKILL.md`. Com a aplicação desktop aberta, use `$steam-guide Nome do jogo` ou `$steam-guide AppID` na conversa deste projeto. Também pode selecionar **Steam Guide** no menu de skills. O prefixo `/` é reservado aos comandos reconhecidos pelo cliente Codex; criar um SKILL.md não registra um novo comando com `/`.
+
+A skill pesquisa as conquistas da versão Steam, salva uma cópia UTF-8 em `generated-guides/<appid>/` e publica o arquivo inteiro como uma **Nota** do workspace. Os arquivos gerados ficam locais e não entram no Git. O destino é o último perfil aberto na aplicação; se houver múltiplos perfis e nenhum ativo, ela solicita a escolha. O jogo deve existir nesse perfil (pode ser um jogo externo).
+
+O cliente `scripts/steam_guide_client.py` encontra a aplicação nas portas 80–109 e usa sua API HTTP, sem acessar o banco ou precisar da chave Steam. Para um endereço diferente, use `--base-url http://127.0.0.1:PORTA`. Reenviar conteúdo idêntico reutiliza a nota existente; um guia diferente cria outra nota. Atualize o workspace aberto no navegador para ver o resultado.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/steam_guide_client.py context
+.\.venv\Scripts\python.exe scripts/steam_guide_client.py publish --steamid 76561198339084663 --appid 374320 --file "generated-guides/374320/meu-guia.md"
+```
+
+Em clientes que ainda não exibem a nova skill, reabra o projeto para recarregar a descoberta. A invocação `$steam-guide` também está documentada em `AGENTS.md`.

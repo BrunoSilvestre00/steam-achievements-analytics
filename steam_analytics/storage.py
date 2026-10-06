@@ -517,10 +517,11 @@ def load_game_workspace(path, steamid, appid):
 def add_game_note(path, steamid, appid, body):
     now = datetime.now(timezone.utc).isoformat()
     with connect(path) as db, db:
-        db.execute(
+        cursor = db.execute(
             "INSERT INTO game_notes (steamid,appid,body,created_at,updated_at) VALUES (?,?,?,?,?)",
             (steamid, appid, body, now, now),
         )
+        return cursor.lastrowid
 
 
 def update_game_note(path, steamid, appid, note_id, body):

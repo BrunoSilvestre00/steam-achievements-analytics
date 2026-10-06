@@ -212,6 +212,7 @@ def create_app(*, service=None):
     )
     app.state.library = service or LibraryService(os.environ.get("STEAM_API_KEY", ""), DATA_ROOT / "steam.sqlite3")
     app.state.cache = MemoryCache(ttl=300)
+    app.state.active_steamid = None
     app.mount("/static", StaticFiles(directory=str(PACKAGE / "static")), name="static")
 
     @app.middleware("http")
@@ -228,6 +229,9 @@ def create_app(*, service=None):
         )
         if not request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store"
+        profile_match = re.match(r"^/profile/(\d{17})(?:/|$)", request.url.path)
+        if request.method == "GET" and response.status_code == 200 and profile_match:
+            app.state.active_steamid = profile_match[1]
         return response
 
     def render(request, name, context=None, status_code=200):
@@ -520,6 +524,29 @@ def create_app(*, service=None):
                 "guide_pairing": pair_trophy_guide(trophy_guide, achievements),
             },
         )
+
+    @app.get("/api/local/guide-context")
+    def guide_context():
+        with connect(app.state.library.database) as db:
+            profiles = [dict(row) for row in db.execute("SELECT steamid, personaname FROM libraries ORDER BY imported_at DESC")]
+            games = [dict(row) for row in db.execute("SELECT lg.steamid, g.appid, g.name FROM library_games lg JOIN games g ON g.appid=lg.appid ORDER BY g.name COLLATE NOCASE")]
+        active = app.state.active_steamid
+        if active is None and len(profiles) == 1:
+            active = profiles[0]["steamid"]
+        return {"application": "Steam Achievement Analytics", "version": VERSION, "active_steamid": active, "profiles": profiles, "games": games}
+
+    @app.post("/api/profile/{steamid}/games/{appid}/workspace/note")
+    def workspace_note_create(steamid: str, appid: int, payload: dict):
+        body = payload.get("body")
+        if not isinstance(body, str) or not body.strip():
+            return JSONResponse({"detail": "A nota deve conter Markdown."}, status_code=400)
+        with connect(app.state.library.database) as db:
+            exists = db.execute("SELECT 1 FROM library_games WHERE steamid=? AND appid=?", (steamid, appid)).fetchone()
+            if not exists:
+                return JSONResponse({"detail": "Adicione este jogo ao perfil antes de publicar o guia."}, status_code=404)
+            existing = db.execute("SELECT id FROM game_notes WHERE steamid=? AND appid=? AND body=? ORDER BY id LIMIT 1", (steamid, appid, body)).fetchone()
+        note_id = existing["id"] if existing else add_game_note(app.state.library.database, steamid, appid, body)
+        return {"ok": True, "note_id": note_id, "created": existing is None, "workspace_url": f"/profile/{steamid}/games/{appid}/workspace"}
 
     @app.post("/profile/{steamid}/games/{appid}/workspace/note")
     def workspace_note(steamid: str, appid: int, body: str = Form(...)):

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Steam Guide"
+  short_description: "Gere um guia Steam e salve no workspace como nota"
+  default_prompt: "Use $steam-guide para gerar e publicar um guia Steam do jogo informado."
